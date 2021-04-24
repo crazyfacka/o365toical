@@ -5,14 +5,18 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"time"
 
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/microsoft"
 )
 
+const (
+	RFC3339Short = "2006-01-02T15:04:05"
+)
+
 func main() {
-	// TODO Provide a webinterface to redirect shenanigans: read client cookie to know who is who
 	// TODO Store all information on a DB (PostgreSQL because RPi)
 
 	viper.SetConfigName("config")
@@ -30,23 +34,26 @@ func main() {
 		Endpoint:     microsoft.AzureADEndpoint(viper.GetString("tenant")),
 	}
 
-	go web(conf.AuthCodeURL("state", oauth2.AccessTypeOffline))
+	codeChan := make(chan string)
+	go web(conf.AuthCodeURL("state", oauth2.AccessTypeOffline), codeChan)
 
 	// Use the authorization code that is pushed to the redirect
 	// URL. Exchange will do the handshake to retrieve the
 	// initial access token. The HTTP Client returned by
 	// conf.Client will refresh the token as necessary.
-	var code string
-	if _, err := fmt.Scan(&code); err != nil { // Change this to retrieve the code from the callback
-		log.Fatal(err)
-	}
+	code := <-codeChan
+
 	tok, err := conf.Exchange(ctx, code)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	t := time.Now()
+	today := t.Format(RFC3339Short)
+	nextWeek := t.Add(time.Hour * 24 * 7).Format(RFC3339Short)
+
 	client := conf.Client(ctx, tok)
-	resp, err := client.Get("https://graph.microsoft.com/v1.0/me/calendarview?startdatetime={{Today}}&enddatetime={{NextWeek}}")
+	resp, err := client.Get("https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + today + "&enddatetime=" + nextWeek)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -57,5 +64,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println(body)
+	fmt.Println(string(body))
 }
