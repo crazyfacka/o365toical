@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -20,6 +22,9 @@ type Calendar struct {
 	ctx    context.Context
 	conf   *oauth2.Config
 	client *http.Client
+
+	userName    string
+	lastUpdated time.Time
 }
 
 func newCalendarHandler() *Calendar {
@@ -33,8 +38,9 @@ func newCalendarHandler() *Calendar {
 	}
 
 	return &Calendar{
-		ctx:  ctx,
-		conf: conf,
+		ctx:         ctx,
+		conf:        conf,
+		lastUpdated: time.Now(),
 	}
 }
 
@@ -42,7 +48,8 @@ func (c *Calendar) getURL() string {
 	return c.conf.AuthCodeURL("state", oauth2.AccessTypeOffline)
 }
 
-func (c *Calendar) handleToken(code string) {
+func (c *Calendar) handleToken(code string) error {
+	var user map[string]interface{}
 
 	// Use the authorization code that is pushed to the redirect
 	// URL. Exchange will do the handshake to retrieve the
@@ -51,10 +58,31 @@ func (c *Calendar) handleToken(code string) {
 
 	tok, err := c.conf.Exchange(c.ctx, code)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	c.client = c.conf.Client(c.ctx, tok)
+
+	resp, err := c.client.Get("https://graph.microsoft.com/v1.0/me")
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+
+	if err := json.Unmarshal(body, &user); err != nil {
+		return err
+	}
+
+	userName := user["userPrincipalName"].(string)
+	userName = userName[0:strings.Index(userName, "@")]
+	c.userName = userName
+
+	return nil
 }
 
 func (c *Calendar) getCalendar() string {

@@ -13,5 +13,5 @@ func main() {
 		log.Fatal(err)
 	}
 
-	web(newCalendarHandler())
+	web()
 }
