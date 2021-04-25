@@ -11,8 +11,8 @@ import (
 var loggedUsers map[string]*Calendar
 
 func main() {
-	// TODO Validate if user already has a struct on loggedUsers and reuse token
 	// TODO Pick current workweek, from Mon to Fri
+	// TODO Add logout to clear user
 
 	// TODO LOW Store user token in DB to persist across restarts
 
