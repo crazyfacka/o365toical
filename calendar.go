@@ -94,11 +94,29 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 }
 
 func (c *Calendar) getCalendar() string {
-	t := time.Now()
-	today := t.Format(RFC3339Short)
-	nextWeek := t.Add(time.Hour * 24 * 7).Format(RFC3339Short)
+	var start, end time.Time
 
-	resp, err := c.client.Get("https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + today + "&enddatetime=" + nextWeek)
+	now := time.Now()
+	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	switch t.Weekday() {
+	case time.Saturday:
+		start = t.Add(time.Hour * 24 * 2)
+	case time.Sunday:
+		start = t.Add(time.Hour * 24)
+	default:
+		start = t
+		for {
+			start = start.Add(time.Hour * 24 * -1)
+			if start.Weekday() == time.Monday {
+				break
+			}
+		}
+	}
+
+	end = start.Add(time.Hour * 24 * 5)
+
+	resp, err := c.client.Get("https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short))
 	if err != nil {
 		log.Fatal(err)
 	}
