@@ -11,7 +11,6 @@ import (
 var loggedUsers map[string]*Calendar
 
 func main() {
-	// TODO Pick current workweek, from Mon to Fri
 	// TODO Add logout to clear user
 
 	// TODO LOW Store user token in DB to persist across restarts
