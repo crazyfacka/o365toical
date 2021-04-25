@@ -11,8 +11,6 @@ const (
 	cookieName = "o365toical"
 )
 
-var loggedUsers map[string]*Calendar
-
 func randomString(n int) string {
 	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
@@ -27,21 +25,21 @@ func randomString(n int) string {
 func web() {
 	e := echo.New()
 
-	loggedUsers = make(map[string]*Calendar)
-
 	e.GET("/", func(c echo.Context) error {
 		cookie, err := c.Cookie(cookieName)
-		if err != nil {
-			cookie = new(http.Cookie)
-			cookie.Name = cookieName
-			cookie.Value = randomString(60)
-			c.SetCookie(cookie)
-
-			loggedUsers[cookie.Value] = newCalendarHandler()
+		if err == nil {
+			if _, ok := loggedUsers[cookie.Value]; ok {
+				return c.String(http.StatusOK, "https://"+c.Request().Host+"/calendar?token="+cookie.Value)
+			}
 		}
 
-		cal := loggedUsers[cookie.Value]
-		return c.Redirect(http.StatusTemporaryRedirect, cal.getURL())
+		cookie = new(http.Cookie)
+		cookie.Name = cookieName
+		cookie.Value = randomString(60)
+		c.SetCookie(cookie)
+
+		loggedUsers[cookie.Value] = newCalendarHandler()
+		return c.Redirect(http.StatusTemporaryRedirect, loggedUsers[cookie.Value].getURL())
 	})
 
 	e.GET("/token", func(c echo.Context) error {
@@ -53,8 +51,14 @@ func web() {
 		code := c.QueryParam("code")
 
 		cal := loggedUsers[cookie.Value]
-		if err = cal.handleToken(code); err != nil {
+		cookieToken, err := cal.handleToken(code, cookie.Value)
+		if err != nil {
 			return err
+		}
+
+		if cookieToken != "" && cookieToken != cookie.Value {
+			cookie.Value = cookieToken
+			c.SetCookie(cookie)
 		}
 
 		return c.Redirect(http.StatusTemporaryRedirect, "/success")

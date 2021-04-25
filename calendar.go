@@ -48,7 +48,7 @@ func (c *Calendar) getURL() string {
 	return c.conf.AuthCodeURL("state", oauth2.AccessTypeOffline)
 }
 
-func (c *Calendar) handleToken(code string) error {
+func (c *Calendar) handleToken(code string, cookieToken string) (string, error) {
 	var user map[string]interface{}
 
 	// Use the authorization code that is pushed to the redirect
@@ -58,31 +58,39 @@ func (c *Calendar) handleToken(code string) error {
 
 	tok, err := c.conf.Exchange(c.ctx, code)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	c.client = c.conf.Client(c.ctx, tok)
 
 	resp, err := c.client.Get("https://graph.microsoft.com/v1.0/me")
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if err := json.Unmarshal(body, &user); err != nil {
-		return err
+		return "", err
 	}
 
 	userName := user["userPrincipalName"].(string)
 	userName = userName[0:strings.Index(userName, "@")]
 	c.userName = userName
 
-	return nil
+	for k, v := range loggedUsers {
+		if v.userName == userName && k != cookieToken {
+			cookieToken = k
+			loggedUsers[k] = c
+			break
+		}
+	}
+
+	return cookieToken, nil
 }
 
 func (c *Calendar) getCalendar() string {
