@@ -9,6 +9,5 @@ FROM debian:buster
 RUN apt update && apt install ca-certificates -y
 WORKDIR /app/
 COPY --from=builder /go/src/github.com/crazyfacka/o365toical/app .
-# You need to provide a valid config.json when building
-COPY config.json .
+# You need to provide a valid config.json to /app/config.json
 CMD ["./app"]
