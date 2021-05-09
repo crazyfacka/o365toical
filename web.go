@@ -85,7 +85,8 @@ func web() {
 
 		cal := loggedUsers[token]
 
-		return c.JSON(http.StatusOK, cal.getCalendar())
+		c.Response().Header().Set(echo.HeaderContentType, "text/calendar")
+		return c.String(http.StatusOK, cal.getCalendar())
 	})
 
 	e.Logger.Fatal(e.Start(":5000"))
