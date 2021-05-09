@@ -12,7 +12,7 @@ var loggedUsers map[string]*Calendar
 
 func main() {
 	// TODO Add logout to clear user
-
+	// TODO Enrich recurring events
 	// TODO LOW Store user token in DB to persist across restarts
 
 	viper.SetConfigName("config")

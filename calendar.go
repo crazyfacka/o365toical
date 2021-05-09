@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -26,7 +27,9 @@ type Calendar struct {
 	conf   *oauth2.Config
 	client *http.Client
 
+	displayName string
 	userName    string
+	userMail    string
 	lastUpdated time.Time
 }
 
@@ -98,8 +101,9 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 		return "", err
 	}
 
-	userName := user["userPrincipalName"].(string)
-	userName = userName[0:strings.Index(userName, "@")]
+	c.displayName = user["displayName"].(string)
+	c.userMail = user["userPrincipalName"].(string)
+	userName := c.userMail[0:strings.Index(c.userMail, "@")]
 	c.userName = userName
 
 	for k, v := range loggedUsers {
@@ -111,6 +115,62 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 	}
 
 	return cookieToken, nil
+}
+
+func (c *Calendar) getRecurring(cal *ics.Calendar, start time.Time, end time.Time) {
+	var calData map[string]interface{}
+
+	reqBody, _ := json.Marshal(map[string]interface{}{
+		"schedules": [1]string{c.userMail},
+		"startTime": map[string]string{
+			"dateTime": start.Format(RFC3339Short),
+			"timeZone": "UTC",
+		},
+		"endTime": map[string]string{
+			"dateTime": end.Format(RFC3339Short),
+			"timeZone": "UTC",
+		},
+	})
+
+	resp, err := c.client.Post("https://graph.microsoft.com/v1.0/me/calendar/getSchedule", "application/json", bytes.NewBuffer(reqBody))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := json.Unmarshal(body, &calData); err != nil {
+		log.Fatal(err)
+	}
+
+	values := calData["value"].([]interface{})
+	items := values[0].(map[string]interface{})["scheduleItems"].([]interface{})
+	for _, v := range items {
+		data := v.(map[string]interface{})
+
+		if !data["isRecurring"].(bool) {
+			continue
+		}
+
+		event := cal.AddEvent(randomString(60))
+		event.SetDtStampTime(time.Now())
+		event.SetCreatedTime(time.Now())
+		event.SetModifiedAt(time.Now())
+
+		t, _ := time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
+		event.SetStartAt(t)
+
+		t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
+		event.SetEndAt(t)
+
+		event.SetSummary(data["subject"].(string))
+		event.SetLocation(data["location"].(string))
+		event.SetOrganizer(c.userMail, ics.WithCN(c.displayName))
+	}
 }
 
 func (c *Calendar) getCalendar() string {
@@ -224,6 +284,8 @@ func (c *Calendar) getCalendar() string {
 			event.AddAttendee(name, props...)
 		}
 	}
+
+	c.getRecurring(cal, start, end)
 
 	return string(cal.Serialize())
 }
