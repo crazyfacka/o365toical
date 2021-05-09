@@ -9,13 +9,15 @@ import (
 	"strings"
 	"time"
 
+	ics "github.com/arran4/golang-ical"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/microsoft"
 )
 
 const (
-	RFC3339Short = "2006-01-02T15:04:05"
+	RFC3339Short      = "2006-01-02T15:04:05"
+	StartEndTimeParse = "2006-01-02T15:04:05.0000000"
 )
 
 type Calendar struct {
@@ -95,6 +97,7 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 
 func (c *Calendar) getCalendar() string {
 	var start, end time.Time
+	var calData map[string]interface{}
 
 	now := time.Now()
 	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -127,5 +130,80 @@ func (c *Calendar) getCalendar() string {
 		log.Fatal(err)
 	}
 
-	return string(body)
+	if err := json.Unmarshal(body, &calData); err != nil {
+		log.Fatal(err)
+	}
+
+	cal := ics.NewCalendar()
+	cal.SetMethod(ics.MethodRequest)
+	cal.SetCalscale("GREGORIAN")
+	cal.SetName(c.userName)
+	cal.SetXWRCalName(c.userName)
+	cal.SetDescription("Calendar for user " + c.userName)
+	cal.SetXWRCalDesc("Calendar for user " + c.userName)
+	cal.SetXWRTimezone("UTC")
+
+	values := calData["value"].([]interface{})
+	for _, v := range values {
+		data := v.(map[string]interface{})
+
+		event := cal.AddEvent(data["id"].(string))
+		event.SetDtStampTime(time.Now())
+
+		t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
+		event.SetCreatedTime(t)
+
+		t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
+		event.SetModifiedAt(t)
+
+		t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
+		event.SetStartAt(t)
+
+		t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
+		event.SetEndAt(t)
+
+		event.SetSummary(data["subject"].(string))
+		event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
+		//event.SetDescription(data["body"].(map[string]interface{})["content"].(string))
+		event.SetDescription(data["subject"].(string))
+		event.SetURL(data["webLink"].(string))
+
+		organizer := data["organizer"].(map[string]interface{})
+		organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
+		organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
+		event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
+
+		attendees := data["attendees"].([]interface{})
+		for _, att := range attendees {
+			var props []ics.PropertyParameter
+
+			castAtt := att.(map[string]interface{})
+
+			typ := castAtt["type"].(string)
+			resp := castAtt["status"].(map[string]interface{})["response"].(string)
+			name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+
+			if typ == "required" {
+				props = append(props, ics.ParticipationRoleReqParticipant)
+			} else {
+				props = append(props, ics.ParticipationRoleOptParticipant)
+			}
+
+			switch resp {
+			case "accepted":
+				props = append(props, ics.ParticipationStatusAccepted)
+			case "tentative":
+				props = append(props, ics.ParticipationStatusTentative)
+			case "declined":
+				props = append(props, ics.ParticipationStatusDeclined)
+			default:
+				props = append(props, ics.ParticipationStatusNeedsAction)
+			}
+
+			props = append(props, ics.WithRSVP(true))
+			event.AddAttendee(name, props...)
+		}
+	}
+
+	return string(cal.Serialize())
 }
