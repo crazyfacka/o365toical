@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -44,6 +45,23 @@ func newCalendarHandler() *Calendar {
 		conf:        conf,
 		lastUpdated: time.Now(),
 	}
+}
+
+func parseTeamsLink(body string, onlineMeeting interface{}) string {
+	if onlineMeeting != nil {
+		return onlineMeeting.(map[string]interface{})["joinUrl"].(string)
+	}
+
+	re := regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`)
+	links := re.FindAllString(body, -1)
+
+	for _, v := range links {
+		if strings.Contains(v, "teams.microsoft.com") {
+			return v
+		}
+	}
+
+	return ""
 }
 
 func (c *Calendar) getURL() string {
@@ -164,8 +182,10 @@ func (c *Calendar) getCalendar() string {
 
 		event.SetSummary(data["subject"].(string))
 		event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
-		//event.SetDescription(data["body"].(map[string]interface{})["content"].(string))
-		event.SetDescription(data["subject"].(string))
+
+		description := parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"])
+		event.SetDescription(description)
+
 		event.SetURL(data["webLink"].(string))
 
 		organizer := data["organizer"].(map[string]interface{})
