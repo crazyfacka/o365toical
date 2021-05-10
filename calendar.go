@@ -69,6 +69,21 @@ func (c *Calendar) getURL() string {
 	return c.conf.AuthCodeURL("state", oauth2.AccessTypeOffline)
 }
 
+func (c *Calendar) getRemoteData(url string) ([]byte, error) {
+	resp, err := c.client.Get(url)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return []byte{}, err
+	}
+
+	return body, nil
+}
+
 func (c *Calendar) handleToken(code string, cookieToken string) (string, error) {
 	var user map[string]interface{}
 
@@ -84,13 +99,7 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 
 	c.client = c.conf.Client(c.ctx, tok)
 
-	resp, err := c.client.Get("https://graph.microsoft.com/v1.0/me")
-	if err != nil {
-		return "", err
-	}
-
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := c.getRemoteData("https://graph.microsoft.com/v1.0/me")
 	if err != nil {
 		return "", err
 	}
@@ -119,21 +128,6 @@ func (c *Calendar) getCalendar() (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
 
-	fnGetRemoteData := func(url string) ([]byte, error) {
-		resp, err := c.client.Get(url)
-		if err != nil {
-			return []byte{}, err
-		}
-
-		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return []byte{}, err
-		}
-
-		return body, nil
-	}
-
 	now := time.Now()
 	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
@@ -157,7 +151,7 @@ func (c *Calendar) getCalendar() (string, error) {
 	end = start.Add(time.Hour * 24 * 5)
 
 	url := "https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short) + "&top=10&skip=0"
-	body, err := fnGetRemoteData(url)
+	body, err := c.getRemoteData(url)
 	if err != nil {
 		return "", err
 	}
@@ -242,7 +236,7 @@ func (c *Calendar) getCalendar() (string, error) {
 
 		if nextPage, ok := calData["@odata.nextLink"].(string); ok {
 			calData = make(map[string]interface{})
-			body, err := fnGetRemoteData(nextPage)
+			body, err := c.getRemoteData(nextPage)
 			if err != nil {
 				return "", err
 			}
