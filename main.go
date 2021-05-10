@@ -25,5 +25,19 @@ func main() {
 	loggedUsers = make(map[string]*Calendar)
 	rand.Seed(time.Now().UnixNano())
 
+	mysqlConfs := viper.GetStringMapString("mysql")
+
+	_, err := initCache(&DBConfs{
+		user:     mysqlConfs["user"],
+		password: mysqlConfs["password"],
+		host:     mysqlConfs["host"],
+		schema:   mysqlConfs["schema"],
+	})
+
+	if err != nil {
+		log.Fatal().Err(err).Send()
+		os.Exit(-1)
+	}
+
 	web()
 }
