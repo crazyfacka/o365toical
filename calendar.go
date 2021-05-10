@@ -185,6 +185,8 @@ func (c *Calendar) getCalendar() string {
 		start = t.Add(time.Hour * 24 * 2)
 	case time.Sunday:
 		start = t.Add(time.Hour * 24)
+	case time.Monday:
+		start = t
 	default:
 		start = t
 		for {
