@@ -121,6 +121,17 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 		}
 	}
 
+	// TODO Should optimize this and avoid O(2n)
+	for k, v := range cachedUsers {
+		if userName == k {
+			delete(loggedUsers, cookieToken)
+			cookieToken = v
+			loggedUsers[v] = c
+			delete(cachedUsers, k)
+			break
+		}
+	}
+
 	return cookieToken, nil
 }
 
