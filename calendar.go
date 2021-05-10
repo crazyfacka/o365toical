@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -116,23 +115,23 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 	return cookieToken, nil
 }
 
-func (c *Calendar) getCalendar() string {
+func (c *Calendar) getCalendar() (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
 
-	fnGetRemoteData := func(url string) []byte {
+	fnGetRemoteData := func(url string) ([]byte, error) {
 		resp, err := c.client.Get(url)
 		if err != nil {
-			log.Fatal(err)
+			return []byte{}, err
 		}
 
 		defer resp.Body.Close()
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			log.Fatal(err)
+			return []byte{}, err
 		}
 
-		return body
+		return body, nil
 	}
 
 	now := time.Now()
@@ -158,8 +157,13 @@ func (c *Calendar) getCalendar() string {
 	end = start.Add(time.Hour * 24 * 5)
 
 	url := "https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short) + "&top=10&skip=0"
-	if err := json.Unmarshal(fnGetRemoteData(url), &calData); err != nil {
-		log.Fatal(err)
+	body, err := fnGetRemoteData(url)
+	if err != nil {
+		return "", err
+	}
+
+	if err := json.Unmarshal(body, &calData); err != nil {
+		return "", err
 	}
 
 	cal := ics.NewCalendar()
@@ -238,13 +242,18 @@ func (c *Calendar) getCalendar() string {
 
 		if nextPage, ok := calData["@odata.nextLink"].(string); ok {
 			calData = make(map[string]interface{})
-			if err := json.Unmarshal(fnGetRemoteData(nextPage), &calData); err != nil {
-				log.Fatal(err)
+			body, err := fnGetRemoteData(nextPage)
+			if err != nil {
+				return "", err
+			}
+
+			if err := json.Unmarshal(body, &calData); err != nil {
+				return "", err
 			}
 		} else {
 			break
 		}
 	}
 
-	return string(cal.Serialize())
+	return string(cal.Serialize()), nil
 }

@@ -85,8 +85,13 @@ func web() {
 
 		cal := loggedUsers[token]
 
-		c.Response().Header().Set(echo.HeaderContentType, "text/calendar")
-		return c.String(http.StatusOK, cal.getCalendar())
+		if body, err := cal.getCalendar(); err == nil {
+			c.Response().Header().Set(echo.HeaderContentType, "text/calendar")
+			return c.String(http.StatusOK, body)
+		} else {
+			return c.String(http.StatusInternalServerError, err.Error())
+		}
+
 	})
 
 	e.Logger.Fatal(e.Start(":5000"))
