@@ -10,6 +10,7 @@ import (
 )
 
 var loggedUsers map[string]*Calendar
+var cachedUsers []*UserToken
 
 func main() {
 	// TODO Add logout to clear user
@@ -27,13 +28,19 @@ func main() {
 
 	mysqlConfs := viper.GetStringMapString("mysql")
 
-	_, err := initCache(&DBConfs{
+	err := initCache(&DBConfs{
 		user:     mysqlConfs["user"],
 		password: mysqlConfs["password"],
 		host:     mysqlConfs["host"],
 		schema:   mysqlConfs["schema"],
 	})
 
+	if err != nil {
+		log.Fatal().Err(err).Send()
+		os.Exit(-1)
+	}
+
+	cachedUsers, err = cachedData.loadUserTokens()
 	if err != nil {
 		log.Fatal().Err(err).Send()
 		os.Exit(-1)

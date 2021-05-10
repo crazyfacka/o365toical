@@ -127,6 +127,8 @@ func web() {
 			return err
 		}
 
+		cachedData.storeToken(loggedUsers[cookie.Value].userName, cookie.Value)
+
 		log.Info().
 			Str("src_ip", c.RealIP()).
 			Str("method", c.Request().Method).
