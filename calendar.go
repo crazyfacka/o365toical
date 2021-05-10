@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -117,65 +116,24 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 	return cookieToken, nil
 }
 
-func (c *Calendar) getRecurring(cal *ics.Calendar, start time.Time, end time.Time) {
-	var calData map[string]interface{}
-
-	reqBody, _ := json.Marshal(map[string]interface{}{
-		"schedules": [1]string{c.userMail},
-		"startTime": map[string]string{
-			"dateTime": start.Format(RFC3339Short),
-			"timeZone": "UTC",
-		},
-		"endTime": map[string]string{
-			"dateTime": end.Format(RFC3339Short),
-			"timeZone": "UTC",
-		},
-	})
-
-	resp, err := c.client.Post("https://graph.microsoft.com/v1.0/me/calendar/getSchedule", "application/json", bytes.NewBuffer(reqBody))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := json.Unmarshal(body, &calData); err != nil {
-		log.Fatal(err)
-	}
-
-	values := calData["value"].([]interface{})
-	items := values[0].(map[string]interface{})["scheduleItems"].([]interface{})
-	for _, v := range items {
-		data := v.(map[string]interface{})
-
-		if !data["isRecurring"].(bool) {
-			continue
-		}
-
-		event := cal.AddEvent(randomString(60))
-		event.SetDtStampTime(time.Now())
-		event.SetCreatedTime(time.Now())
-		event.SetModifiedAt(time.Now())
-
-		t, _ := time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
-		event.SetStartAt(t)
-
-		t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
-		event.SetEndAt(t)
-
-		event.SetSummary(data["subject"].(string))
-		event.SetLocation(data["location"].(string))
-		event.SetOrganizer(c.userMail, ics.WithCN(c.displayName))
-	}
-}
-
 func (c *Calendar) getCalendar() string {
 	var start, end time.Time
 	var calData map[string]interface{}
+
+	fnGetRemoteData := func(url string) []byte {
+		resp, err := c.client.Get(url)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return body
+	}
 
 	now := time.Now()
 	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -199,18 +157,8 @@ func (c *Calendar) getCalendar() string {
 
 	end = start.Add(time.Hour * 24 * 5)
 
-	resp, err := c.client.Get("https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short))
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if err := json.Unmarshal(body, &calData); err != nil {
+	url := "https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short) + "&top=10&skip=0"
+	if err := json.Unmarshal(fnGetRemoteData(url), &calData); err != nil {
 		log.Fatal(err)
 	}
 
@@ -223,71 +171,80 @@ func (c *Calendar) getCalendar() string {
 	cal.SetXWRCalDesc("Calendar for user " + c.userName)
 	cal.SetXWRTimezone("UTC")
 
-	values := calData["value"].([]interface{})
-	for _, v := range values {
-		data := v.(map[string]interface{})
+	for {
+		values := calData["value"].([]interface{})
+		for _, v := range values {
+			data := v.(map[string]interface{})
 
-		event := cal.AddEvent(data["id"].(string))
-		event.SetDtStampTime(time.Now())
+			event := cal.AddEvent(data["id"].(string))
+			event.SetDtStampTime(time.Now())
 
-		t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
-		event.SetCreatedTime(t)
+			t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
+			event.SetCreatedTime(t)
 
-		t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
-		event.SetModifiedAt(t)
+			t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
+			event.SetModifiedAt(t)
 
-		t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
-		event.SetStartAt(t)
+			t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
+			event.SetStartAt(t)
 
-		t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
-		event.SetEndAt(t)
+			t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
+			event.SetEndAt(t)
 
-		event.SetSummary(data["subject"].(string))
-		event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
+			event.SetSummary(data["subject"].(string))
+			event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
 
-		description := parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"])
-		event.SetDescription(description)
+			description := parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"])
+			event.SetDescription(description)
 
-		event.SetURL(data["webLink"].(string))
+			event.SetURL(data["webLink"].(string))
 
-		organizer := data["organizer"].(map[string]interface{})
-		organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
-		organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
-		event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
+			organizer := data["organizer"].(map[string]interface{})
+			organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
+			organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
+			event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
 
-		attendees := data["attendees"].([]interface{})
-		for _, att := range attendees {
-			var props []ics.PropertyParameter
+			attendees := data["attendees"].([]interface{})
+			for _, att := range attendees {
+				var props []ics.PropertyParameter
 
-			castAtt := att.(map[string]interface{})
+				castAtt := att.(map[string]interface{})
 
-			typ := castAtt["type"].(string)
-			resp := castAtt["status"].(map[string]interface{})["response"].(string)
-			name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+				typ := castAtt["type"].(string)
+				resp := castAtt["status"].(map[string]interface{})["response"].(string)
+				name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
 
-			if typ == "required" {
-				props = append(props, ics.ParticipationRoleReqParticipant)
-			} else {
-				props = append(props, ics.ParticipationRoleOptParticipant)
+				if typ == "required" {
+					props = append(props, ics.ParticipationRoleReqParticipant)
+				} else {
+					props = append(props, ics.ParticipationRoleOptParticipant)
+				}
+
+				switch resp {
+				case "accepted":
+					props = append(props, ics.ParticipationStatusAccepted)
+				case "tentative":
+					props = append(props, ics.ParticipationStatusTentative)
+				case "declined":
+					props = append(props, ics.ParticipationStatusDeclined)
+				default:
+					props = append(props, ics.ParticipationStatusNeedsAction)
+				}
+
+				props = append(props, ics.WithRSVP(true))
+				event.AddAttendee(name, props...)
 			}
+		}
 
-			switch resp {
-			case "accepted":
-				props = append(props, ics.ParticipationStatusAccepted)
-			case "tentative":
-				props = append(props, ics.ParticipationStatusTentative)
-			case "declined":
-				props = append(props, ics.ParticipationStatusDeclined)
-			default:
-				props = append(props, ics.ParticipationStatusNeedsAction)
+		if nextPage, ok := calData["@odata.nextLink"].(string); ok {
+			calData = make(map[string]interface{})
+			if err := json.Unmarshal(fnGetRemoteData(nextPage), &calData); err != nil {
+				log.Fatal(err)
 			}
-
-			props = append(props, ics.WithRSVP(true))
-			event.AddAttendee(name, props...)
+		} else {
+			break
 		}
 	}
-
-	c.getRecurring(cal, start, end)
 
 	return string(cal.Serialize())
 }
