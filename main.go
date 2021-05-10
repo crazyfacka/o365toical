@@ -10,7 +10,7 @@ import (
 )
 
 var loggedUsers map[string]*Calendar
-var cachedUsers []*UserToken
+var cachedUsers map[string]string
 
 func main() {
 	// TODO Add logout to clear user

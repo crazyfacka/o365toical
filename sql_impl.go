@@ -25,11 +25,6 @@ type CachedData struct {
 	db *sql.DB
 }
 
-type UserToken struct {
-	user  string
-	token string
-}
-
 func initCache(opts *DBConfs) error {
 	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s", opts.user, opts.password, opts.host, opts.schema))
 	if err != nil {
@@ -80,9 +75,10 @@ func (cd *CachedData) storeToken(user string, token string) error {
 	return nil
 }
 
-func (cd *CachedData) loadUserTokens() ([]*UserToken, error) {
+func (cd *CachedData) loadUserTokens() (map[string]string, error) {
 	var user, token string
-	var tokens []*UserToken
+
+	tokens := make(map[string]string)
 
 	rows, err := cd.db.Query("SELECT user, token FROM " + tableName)
 	if err != nil {
@@ -97,10 +93,7 @@ func (cd *CachedData) loadUserTokens() ([]*UserToken, error) {
 			return nil, err
 		}
 
-		tokens = append(tokens, &UserToken{
-			user:  user,
-			token: token,
-		})
+		tokens[user] = token
 	}
 
 	return tokens, nil
