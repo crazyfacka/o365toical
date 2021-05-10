@@ -1,10 +1,11 @@
 package main
 
 import (
-	"log"
 	"math/rand"
+	"os"
 	"time"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 )
 
@@ -12,13 +13,13 @@ var loggedUsers map[string]*Calendar
 
 func main() {
 	// TODO Add logout to clear user
-	// TODO Enrich recurring events
 	// TODO LOW Store user token in DB to persist across restarts
 
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")
 	if err := viper.ReadInConfig(); err != nil {
-		log.Fatal(err)
+		log.Fatal().Err(err).Send()
+		os.Exit(-1)
 	}
 
 	loggedUsers = make(map[string]*Calendar)

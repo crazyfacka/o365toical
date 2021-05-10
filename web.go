@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/rs/zerolog/log"
 )
 
 const (
@@ -29,6 +30,13 @@ func web() {
 		cookie, err := c.Cookie(cookieName)
 		if err == nil {
 			if _, ok := loggedUsers[cookie.Value]; ok {
+				log.Info().
+					Str("src_ip", c.RealIP()).
+					Str("method", c.Request().Method).
+					Str("path", c.Path()).
+					Int("status", http.StatusOK).
+					Msg("Session already found")
+
 				return c.String(http.StatusOK, "https://"+c.Request().Host+"/calendar?token="+cookie.Value)
 			}
 		}
@@ -38,6 +46,13 @@ func web() {
 		cookie.Value = randomString(60)
 		c.SetCookie(cookie)
 
+		log.Info().
+			Str("src_ip", c.RealIP()).
+			Str("method", c.Request().Method).
+			Str("path", c.Path()).
+			Int("status", http.StatusTemporaryRedirect).
+			Msg("New session created")
+
 		loggedUsers[cookie.Value] = newCalendarHandler()
 		return c.Redirect(http.StatusTemporaryRedirect, loggedUsers[cookie.Value].getURL())
 	})
@@ -45,6 +60,14 @@ func web() {
 	e.GET("/token", func(c echo.Context) error {
 		cookie, err := c.Cookie(cookieName)
 		if err != nil {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Int("status", http.StatusInternalServerError).
+				Send()
+
 			return err
 		}
 
@@ -53,6 +76,14 @@ func web() {
 		cal := loggedUsers[cookie.Value]
 		cookieToken, err := cal.handleToken(code, cookie.Value)
 		if err != nil {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Int("status", http.StatusInternalServerError).
+				Send()
+
 			return err
 		}
 
@@ -61,14 +92,36 @@ func web() {
 			c.SetCookie(cookie)
 		}
 
+		log.Info().
+			Str("src_ip", c.RealIP()).
+			Str("method", c.Request().Method).
+			Str("path", c.Path()).
+			Int("status", http.StatusTemporaryRedirect).
+			Msg("New token stored")
+
 		return c.Redirect(http.StatusTemporaryRedirect, "/success")
 	})
 
 	e.GET("/success", func(c echo.Context) error {
 		cookie, err := c.Cookie(cookieName)
 		if err != nil {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Int("status", http.StatusInternalServerError).
+				Send()
+
 			return err
 		}
+
+		log.Info().
+			Str("src_ip", c.RealIP()).
+			Str("method", c.Request().Method).
+			Str("path", c.Path()).
+			Int("status", http.StatusOK).
+			Send()
 
 		return c.String(http.StatusOK, "https://"+c.Request().Host+"/calendar?token="+cookie.Value)
 	})
@@ -86,9 +139,24 @@ func web() {
 		cal := loggedUsers[token]
 
 		if body, err := cal.getCalendar(); err == nil {
+			log.Info().
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Int("status", http.StatusOK).
+				Send()
+
 			c.Response().Header().Set(echo.HeaderContentType, "text/calendar")
 			return c.String(http.StatusOK, body)
 		} else {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Int("status", http.StatusInternalServerError).
+				Send()
+
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
