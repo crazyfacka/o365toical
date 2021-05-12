@@ -73,6 +73,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
@@ -89,6 +90,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
@@ -121,6 +123,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
@@ -137,7 +140,8 @@ func web() {
 			Dur("duration", time.Since(start)).
 			Send()
 
-		return c.String(http.StatusOK, "https://"+c.Request().Host+"/calendar?token="+cookie.Value)
+		url := "https://" + c.Request().Host + "/calendar?token=" + cookie.Value
+		return c.String(http.StatusOK, url+"\n"+url+"&full=true")
 	})
 
 	e.GET("/calendar", func(c echo.Context) error {
@@ -152,9 +156,26 @@ func web() {
 			token = cookie.Value
 		}
 
-		cal := loggedUsers[token]
+		full := false
+		if c.QueryParam("full") == "true" {
+			full = true
+		}
 
-		if body, err := cal.getCalendar(); err == nil {
+		cal := loggedUsers[token]
+		if cal == nil {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
+				Int("status", http.StatusTemporaryRedirect).
+				Msg("Unknown token")
+
+			return c.Redirect(http.StatusTemporaryRedirect, "/")
+		}
+
+		if body, err := cal.getCalendar(full); err == nil {
 			log.Info().
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
@@ -171,6 +192,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
