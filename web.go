@@ -73,6 +73,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
@@ -89,6 +90,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
@@ -121,6 +123,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
@@ -153,6 +156,18 @@ func web() {
 		}
 
 		cal := loggedUsers[token]
+		if cal == nil {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
+				Int("status", http.StatusTemporaryRedirect).
+				Msg("Unknown token")
+
+			return c.Redirect(http.StatusTemporaryRedirect, "/")
+		}
 
 		if body, err := cal.getCalendar(); err == nil {
 			log.Info().
@@ -171,6 +186,7 @@ func web() {
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
 				Int("status", http.StatusInternalServerError).
 				Send()
 
