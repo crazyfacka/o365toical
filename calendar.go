@@ -262,8 +262,9 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 					props = append(props, ics.ParticipationStatusNeedsAction)
 				}
 
+				props = append(props, ics.WithCN(name))
 				props = append(props, ics.WithRSVP(true))
-				event.AddAttendee("\""+name+" <"+email+">\"", props...)
+				event.AddAttendee(email, props...)
 			}
 		}
 
