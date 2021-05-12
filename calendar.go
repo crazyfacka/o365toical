@@ -135,6 +135,23 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 	return cookieToken, nil
 }
 
+func (c *Calendar) shouldSkip(data map[string]interface{}) bool {
+	rspStatus := data["responseStatus"].(map[string]interface{})
+	if rspStatus["response"].(string) != "accepted" && rspStatus["response"].(string) != "organizer" && rspStatus["response"].(string) != "none" {
+		return true
+	}
+
+	if data["isAllDay"].(bool) {
+		return true
+	}
+
+	if data["showAs"].(string) != "busy" {
+		return true
+	}
+
+	return false
+}
+
 func (c *Calendar) getCalendar() (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
@@ -184,6 +201,10 @@ func (c *Calendar) getCalendar() (string, error) {
 		values := calData["value"].([]interface{})
 		for _, v := range values {
 			data := v.(map[string]interface{})
+
+			if c.shouldSkip(data) {
+				continue
+			}
 
 			event := cal.AddEvent(data["id"].(string))
 			event.SetDtStampTime(time.Now())
