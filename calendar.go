@@ -243,6 +243,7 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 				typ := castAtt["type"].(string)
 				resp := castAtt["status"].(map[string]interface{})["response"].(string)
 				name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+				email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
 
 				if typ == "required" {
 					props = append(props, ics.ParticipationRoleReqParticipant)
@@ -261,8 +262,9 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 					props = append(props, ics.ParticipationStatusNeedsAction)
 				}
 
+				props = append(props, ics.WithCN(name))
 				props = append(props, ics.WithRSVP(true))
-				event.AddAttendee(name, props...)
+				event.AddAttendee(email, props...)
 			}
 		}
 
