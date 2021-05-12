@@ -140,7 +140,8 @@ func web() {
 			Dur("duration", time.Since(start)).
 			Send()
 
-		return c.String(http.StatusOK, "https://"+c.Request().Host+"/calendar?token="+cookie.Value)
+		url := "https://" + c.Request().Host + "/calendar?token=" + cookie.Value
+		return c.String(http.StatusOK, url+"\n"+url+"&full=true")
 	})
 
 	e.GET("/calendar", func(c echo.Context) error {
@@ -153,6 +154,11 @@ func web() {
 			token = c.QueryParam("token")
 		} else {
 			token = cookie.Value
+		}
+
+		full := false
+		if c.QueryParam("full") == "true" {
+			full = true
 		}
 
 		cal := loggedUsers[token]
@@ -169,7 +175,7 @@ func web() {
 			return c.Redirect(http.StatusTemporaryRedirect, "/")
 		}
 
-		if body, err := cal.getCalendar(); err == nil {
+		if body, err := cal.getCalendar(full); err == nil {
 			log.Info().
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).

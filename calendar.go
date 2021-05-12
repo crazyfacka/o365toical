@@ -152,7 +152,7 @@ func (c *Calendar) shouldSkip(data map[string]interface{}) bool {
 	return false
 }
 
-func (c *Calendar) getCalendar() (string, error) {
+func (c *Calendar) getCalendar(full bool) (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
 
@@ -202,7 +202,7 @@ func (c *Calendar) getCalendar() (string, error) {
 		for _, v := range values {
 			data := v.(map[string]interface{})
 
-			if c.shouldSkip(data) {
+			if !full && c.shouldSkip(data) {
 				continue
 			}
 
