@@ -147,13 +147,22 @@ func web() {
 	e.GET("/calendar", func(c echo.Context) error {
 		start := time.Now()
 
-		var token string
+		token := c.QueryParam("token")
+		if len(token) == 0 {
+			cookie, err := c.Cookie(cookieName)
+			if err != nil {
+				log.Error().
+					Str("src_ip", c.RealIP()).
+					Str("method", c.Request().Method).
+					Str("path", c.Path()).
+					Dur("duration", time.Since(start)).
+					Int("status", http.StatusTemporaryRedirect).
+					Msg("No token nor cookie")
 
-		cookie, err := c.Cookie(cookieName)
-		if err != nil {
-			token = c.QueryParam("token")
-		} else {
-			token = cookie.Value
+				return c.Redirect(http.StatusTemporaryRedirect, "/")
+			} else {
+				token = cookie.Value
+			}
 		}
 
 		full := false
@@ -164,7 +173,6 @@ func web() {
 		cal := loggedUsers[token]
 		if cal == nil {
 			log.Error().
-				Err(err).
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
 				Str("path", c.Path()).
