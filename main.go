@@ -14,7 +14,6 @@ var cachedUsers map[string]string
 
 func main() {
 	// TODO Add logout to clear user
-	// TODO Improve pagination (from 10 to 30)
 
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")

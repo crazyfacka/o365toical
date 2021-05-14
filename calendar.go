@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -46,23 +45,6 @@ func newCalendarHandler() *Calendar {
 		conf:        conf,
 		lastUpdated: time.Now(),
 	}
-}
-
-func parseTeamsLink(body string, onlineMeeting interface{}) string {
-	if onlineMeeting != nil {
-		return onlineMeeting.(map[string]interface{})["joinUrl"].(string)
-	}
-
-	re := regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`)
-	links := re.FindAllString(body, -1)
-
-	for _, v := range links {
-		if strings.Contains(v, "teams.microsoft.com") {
-			return v
-		}
-	}
-
-	return ""
 }
 
 func (c *Calendar) getURL() string {
@@ -191,10 +173,6 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 	cal := ics.NewCalendar()
 	cal.SetMethod(ics.MethodRequest)
 	cal.SetCalscale("GREGORIAN")
-	cal.SetName(c.userName)
-	cal.SetXWRCalName(c.userName)
-	cal.SetDescription("Calendar for user " + c.userName)
-	cal.SetXWRCalDesc("Calendar for user " + c.userName)
 	cal.SetXWRTimezone("UTC")
 
 	for {
@@ -224,15 +202,22 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 			event.SetSummary(data["subject"].(string))
 			event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
 
-			description := parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"])
-			event.SetDescription(description)
+			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
+			if err == nil && description != "" {
+				event.SetDescription(description)
+			}
 
-			event.SetURL(data["webLink"].(string))
+			link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
+			if link != "" {
+				event.SetURL(link)
+			}
 
 			organizer := data["organizer"].(map[string]interface{})
 			organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
 			organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
 			event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
+
+			event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
 
 			attendees := data["attendees"].([]interface{})
 			for _, att := range attendees {
