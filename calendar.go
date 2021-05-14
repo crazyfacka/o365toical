@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"regexp"
 	"strings"
 	"time"
 
@@ -46,23 +45,6 @@ func newCalendarHandler() *Calendar {
 		conf:        conf,
 		lastUpdated: time.Now(),
 	}
-}
-
-func parseTeamsLink(body string, onlineMeeting interface{}) string {
-	if onlineMeeting != nil {
-		return onlineMeeting.(map[string]interface{})["joinUrl"].(string)
-	}
-
-	re := regexp.MustCompile(`(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?`)
-	links := re.FindAllString(body, -1)
-
-	for _, v := range links {
-		if strings.Contains(v, "teams.microsoft.com") {
-			return v
-		}
-	}
-
-	return ""
 }
 
 func (c *Calendar) getURL() string {
@@ -152,7 +134,7 @@ func (c *Calendar) shouldSkip(data map[string]interface{}) bool {
 	return false
 }
 
-func (c *Calendar) getCalendar(full bool) (string, error) {
+func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
 
@@ -191,10 +173,6 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 	cal := ics.NewCalendar()
 	cal.SetMethod(ics.MethodRequest)
 	cal.SetCalscale("GREGORIAN")
-	cal.SetName(c.userName)
-	cal.SetXWRCalName(c.userName)
-	cal.SetDescription("Calendar for user " + c.userName)
-	cal.SetXWRCalDesc("Calendar for user " + c.userName)
 	cal.SetXWRTimezone("UTC")
 
 	for {
@@ -224,47 +202,55 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 			event.SetSummary(data["subject"].(string))
 			event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
 
-			description := parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"])
-			event.SetDescription(description)
+			link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
+			if link != "" {
+				event.SetURL(link)
+			}
 
-			event.SetURL(data["webLink"].(string))
+			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
+			if err == nil && description != "" {
+				event.SetDescription(description + "\n\n" + link)
+			}
 
 			organizer := data["organizer"].(map[string]interface{})
 			organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
 			organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
 			event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
 
-			attendees := data["attendees"].([]interface{})
-			for _, att := range attendees {
-				var props []ics.PropertyParameter
+			event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
 
-				castAtt := att.(map[string]interface{})
+			if !google {
+				attendees := data["attendees"].([]interface{})
+				for _, att := range attendees {
+					var props []ics.PropertyParameter
 
-				typ := castAtt["type"].(string)
-				resp := castAtt["status"].(map[string]interface{})["response"].(string)
-				name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
-				email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
+					castAtt := att.(map[string]interface{})
 
-				if typ == "required" {
-					props = append(props, ics.ParticipationRoleReqParticipant)
-				} else {
-					props = append(props, ics.ParticipationRoleOptParticipant)
+					typ := castAtt["type"].(string)
+					resp := castAtt["status"].(map[string]interface{})["response"].(string)
+					name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+					email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
+
+					if typ == "required" {
+						props = append(props, ics.ParticipationRoleReqParticipant)
+					} else {
+						props = append(props, ics.ParticipationRoleOptParticipant)
+					}
+
+					switch resp {
+					case "accepted":
+						props = append(props, ics.ParticipationStatusAccepted)
+					case "tentative":
+						props = append(props, ics.ParticipationStatusTentative)
+					case "declined":
+						props = append(props, ics.ParticipationStatusDeclined)
+					default:
+						props = append(props, ics.ParticipationStatusNeedsAction)
+					}
+
+					props = append(props, ics.WithCN(name))
+					event.AddAttendee(email, props...)
 				}
-
-				switch resp {
-				case "accepted":
-					props = append(props, ics.ParticipationStatusAccepted)
-				case "tentative":
-					props = append(props, ics.ParticipationStatusTentative)
-				case "declined":
-					props = append(props, ics.ParticipationStatusDeclined)
-				default:
-					props = append(props, ics.ParticipationStatusNeedsAction)
-				}
-
-				props = append(props, ics.WithCN(name))
-				props = append(props, ics.WithRSVP(true))
-				event.AddAttendee(email, props...)
 			}
 		}
 
