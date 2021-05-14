@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"os"
 	"time"
@@ -12,8 +13,12 @@ import (
 var loggedUsers map[string]*Calendar
 var cachedUsers map[string]string
 
+var BuildDate string
+
 func main() {
 	// TODO Add logout to clear user
+
+	fmt.Printf("O365 to iCal build from %s\n", BuildDate)
 
 	viper.SetConfigName("config")
 	viper.AddConfigPath(".")

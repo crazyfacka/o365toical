@@ -3,7 +3,8 @@ WORKDIR /go/src/github.com/crazyfacka/o365toical/
 COPY go.mod .
 COPY go.sum .
 COPY *.go .
-RUN go build -a -o app
+RUN NOW=$(date +"%Y-%m-%d_%H%M") && \
+go build -ldflags "-X main.BuildDate=$NOW" -a -o app
 
 FROM debian:buster
 RUN apt update && apt install ca-certificates -y
