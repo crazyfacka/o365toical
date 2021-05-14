@@ -37,7 +37,7 @@ func html2text(body string) (string, error) {
 	f = func(n *html.Node) {
 		if n.Type == html.TextNode && parse {
 			builder.WriteString(strings.TrimSpace(n.Data))
-			builder.WriteString("\n")
+			builder.WriteRune('\n')
 		}
 
 		if n.Type == html.ElementNode && n.Data == "body" {
@@ -51,5 +51,11 @@ func html2text(body string) (string, error) {
 
 	f(doc)
 
-	return re.ReplaceAllString(builder.String(), ""), nil
+	outputString := builder.String()
+	strippedOutput := re.ReplaceAllString(outputString, "")
+	if strippedOutput != "" {
+		return outputString, nil
+	}
+
+	return "", nil
 }

@@ -170,6 +170,11 @@ func web() {
 			full = true
 		}
 
+		google := false
+		if c.QueryParam("google") == "true" {
+			google = true
+		}
+
 		cal := loggedUsers[token]
 		if cal == nil {
 			log.Error().
@@ -183,7 +188,7 @@ func web() {
 			return c.Redirect(http.StatusTemporaryRedirect, "/")
 		}
 
-		if body, err := cal.getCalendar(full); err == nil {
+		if body, err := cal.getCalendar(full, google); err == nil {
 			log.Info().
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).

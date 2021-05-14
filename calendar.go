@@ -134,7 +134,7 @@ func (c *Calendar) shouldSkip(data map[string]interface{}) bool {
 	return false
 }
 
-func (c *Calendar) getCalendar(full bool) (string, error) {
+func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
 
@@ -202,14 +202,14 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 			event.SetSummary(data["subject"].(string))
 			event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
 
-			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
-			if err == nil && description != "" {
-				event.SetDescription(description)
-			}
-
 			link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
 			if link != "" {
 				event.SetURL(link)
+			}
+
+			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
+			if err == nil && description != "" {
+				event.SetDescription(description + "\n\n" + link)
 			}
 
 			organizer := data["organizer"].(map[string]interface{})
@@ -219,37 +219,38 @@ func (c *Calendar) getCalendar(full bool) (string, error) {
 
 			event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
 
-			attendees := data["attendees"].([]interface{})
-			for _, att := range attendees {
-				var props []ics.PropertyParameter
+			if !google {
+				attendees := data["attendees"].([]interface{})
+				for _, att := range attendees {
+					var props []ics.PropertyParameter
 
-				castAtt := att.(map[string]interface{})
+					castAtt := att.(map[string]interface{})
 
-				typ := castAtt["type"].(string)
-				resp := castAtt["status"].(map[string]interface{})["response"].(string)
-				name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
-				email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
+					typ := castAtt["type"].(string)
+					resp := castAtt["status"].(map[string]interface{})["response"].(string)
+					name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+					email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
 
-				if typ == "required" {
-					props = append(props, ics.ParticipationRoleReqParticipant)
-				} else {
-					props = append(props, ics.ParticipationRoleOptParticipant)
+					if typ == "required" {
+						props = append(props, ics.ParticipationRoleReqParticipant)
+					} else {
+						props = append(props, ics.ParticipationRoleOptParticipant)
+					}
+
+					switch resp {
+					case "accepted":
+						props = append(props, ics.ParticipationStatusAccepted)
+					case "tentative":
+						props = append(props, ics.ParticipationStatusTentative)
+					case "declined":
+						props = append(props, ics.ParticipationStatusDeclined)
+					default:
+						props = append(props, ics.ParticipationStatusNeedsAction)
+					}
+
+					props = append(props, ics.WithCN(name))
+					event.AddAttendee(email, props...)
 				}
-
-				switch resp {
-				case "accepted":
-					props = append(props, ics.ParticipationStatusAccepted)
-				case "tentative":
-					props = append(props, ics.ParticipationStatusTentative)
-				case "declined":
-					props = append(props, ics.ParticipationStatusDeclined)
-				default:
-					props = append(props, ics.ParticipationStatusNeedsAction)
-				}
-
-				props = append(props, ics.WithCN(name))
-				props = append(props, ics.WithRSVP(true))
-				event.AddAttendee(email, props...)
 			}
 		}
 
