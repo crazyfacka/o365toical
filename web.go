@@ -141,7 +141,16 @@ func web() {
 			Send()
 
 		url := "https://" + c.Request().Host + "/calendar?token=" + cookie.Value
-		return c.String(http.StatusOK, url+"\n"+url+"&full=true")
+
+		output := `For regular devices:
+` + url + `
+` + url + `&full=true    # Includes tentatives and marked as 'Free' on the calendar
+
+For Google Calendar:
+` + url + `&google=true
+` + url + `&google=true&full=true    # Includes tentatives and marked as 'Free' on the calendar`
+
+		return c.String(http.StatusOK, output)
 	})
 
 	e.GET("/calendar", func(c echo.Context) error {
