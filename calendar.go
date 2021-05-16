@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	ics "github.com/arran4/golang-ical"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/microsoft"
@@ -28,6 +30,11 @@ type Calendar struct {
 	userName    string
 	userMail    string
 	lastUpdated time.Time
+}
+
+type Attachment struct {
+	url      string
+	mimeType string
 }
 
 func newCalendarHandler() *Calendar {
@@ -64,6 +71,32 @@ func (c *Calendar) getRemoteData(url string) ([]byte, error) {
 	}
 
 	return body, nil
+}
+
+func (c *Calendar) saveURLToFile(url string, attId string, fname string) error {
+	baseDir := viper.GetString("attachments_dir") + "/" + attId
+	os.MkdirAll(baseDir, os.ModePerm)
+
+	file, err := os.Create(baseDir + "/" + fname)
+	if err != nil {
+		return err
+	}
+
+	resp, err := c.client.Get(url)
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	_, err = io.Copy(file, resp.Body)
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	return nil
 }
 
 func (c *Calendar) handleToken(code string, cookieToken string) (string, error) {
@@ -132,6 +165,64 @@ func (c *Calendar) shouldSkip(data map[string]interface{}) bool {
 	}
 
 	return false
+}
+
+func (c *Calendar) handleAttachments(id string, hasAttachments bool) ([]*Attachment, error) {
+	if !hasAttachments {
+		return nil, nil
+	}
+
+	var attData map[string]interface{}
+	var attachments []*Attachment
+
+	url := "https://graph.microsoft.com/v1.0/me/events/" + id + "/attachments"
+	body, err := c.getRemoteData(url)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := json.Unmarshal(body, &attData); err != nil {
+		return nil, err
+	}
+
+	values := attData["value"].([]interface{})
+	for _, v := range values {
+		data := v.(map[string]interface{})
+
+		attId := data["id"].(string)
+		name := data["name"].(string)
+		contentType := data["contentType"].(string)
+
+		if attCache := cachedData.attachmentExists(attId); attCache != nil {
+			attachments = append(attachments, &Attachment{
+				url:      "/attachment/" + attId + "/" + attCache[0],
+				mimeType: attCache[1],
+			})
+			continue
+		}
+
+		go func() {
+			url := "https://graph.microsoft.com/v1.0/me/events/" + id + "/attachments/" + attId + "/$value"
+			if err := c.saveURLToFile(url, attId, name); err != nil {
+				log.Error().
+					Err(err).
+					Str("Attachment ID", attId).
+					Str("File name", name).
+					Msg("Error saving file to disk")
+			}
+		}()
+
+		if err = cachedData.saveAttachment(attId, name, contentType); err != nil {
+			return nil, err
+		}
+
+		attachments = append(attachments, &Attachment{
+			url:      "/attachment/" + attId + "/" + name,
+			mimeType: contentType,
+		})
+	}
+
+	return attachments, nil
 }
 
 func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
@@ -210,6 +301,15 @@ func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
 			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
 			if err == nil && description != "" {
 				event.SetDescription(description + "\n\n" + link)
+			}
+
+			atts, err := c.handleAttachments(data["id"].(string), data["hasAttachments"].(bool))
+			if err != nil {
+				return "", err
+			}
+
+			for _, v := range atts {
+				event.AddAttachmentURL(v.url, v.mimeType)
 			}
 
 			organizer := data["organizer"].(map[string]interface{})
