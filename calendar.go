@@ -226,30 +226,9 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 }
 
 func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string, error) {
-	var start, end time.Time
 	var calData map[string]interface{}
 
-	now := time.Now()
-	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-
-	switch t.Weekday() {
-	case time.Saturday:
-		start = t.Add(time.Hour * 24 * 2)
-	case time.Sunday:
-		start = t.Add(time.Hour * 24)
-	case time.Monday:
-		start = t
-	default:
-		start = t
-		for {
-			start = start.Add(time.Hour * 24 * -1)
-			if start.Weekday() == time.Monday {
-				break
-			}
-		}
-	}
-
-	end = start.Add(time.Hour * 24 * 5)
+	start, end := getStartEndWeekDays()
 
 	url := "https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short) + "&top=10&skip=0"
 	body, err := c.getRemoteData(url)
