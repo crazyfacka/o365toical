@@ -11,6 +11,7 @@ import (
 const (
 	loggedUsersTable = "logged_users"
 	attachmentsTable = "attachments"
+	monthCacheTable  = "month_cache"
 )
 
 var cachedData *CachedData
@@ -67,6 +68,26 @@ func initCache(opts *DBConfs) error {
 			"`last_updated` DATETIME NOT NULL," +
 			"PRIMARY KEY (`id`)," +
 			"UNIQUE INDEX `att_id_UNIQUE` (`att_id` ASC) VISIBLE," +
+			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
+
+		if tableErr != nil {
+			return tableErr
+		}
+	} else if err != nil {
+		return err
+	}
+
+	err = db.QueryRow("SHOW TABLES LIKE '" + monthCacheTable + "'").Scan(&queriedTableName)
+	if err == sql.ErrNoRows {
+		_, tableErr := db.Exec("CREATE TABLE `" + monthCacheTable + "` (" +
+			"`id` INT NOT NULL AUTO_INCREMENT," +
+			"`user` VARCHAR(8) NOT NULL," +
+			"`start` DATETIME NOT NULL," +
+			"`end` DATETIME NOT NULL," +
+			"`contents` MEDIUMTEXT NOT NULL," +
+			"`last_updated` DATETIME NOT NULL," +
+			"PRIMARY KEY (`id`)," +
+			"UNIQUE INDEX `user_UNIQUE` (`user` ASC) VISIBLE," +
 			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
 
 		if tableErr != nil {
