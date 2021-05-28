@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	tableName = "logged_users"
+	loggedUsersTable = "logged_users"
+	attachmentsTable = "attachments"
 )
 
 var cachedData *CachedData
@@ -37,9 +38,9 @@ func initCache(opts *DBConfs) error {
 	db.SetMaxIdleConns(10)
 
 	var queriedTableName string
-	err = db.QueryRow("SHOW TABLES LIKE '" + tableName + "'").Scan(&queriedTableName)
+	err = db.QueryRow("SHOW TABLES LIKE '" + loggedUsersTable + "'").Scan(&queriedTableName)
 	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + tableName + "` (" +
+		_, tableErr := db.Exec("CREATE TABLE `" + loggedUsersTable + "` (" +
 			"`id` INT NOT NULL AUTO_INCREMENT," +
 			"`user` VARCHAR(8) NOT NULL," +
 			"`token` VARCHAR(60) NOT NULL," +
@@ -47,6 +48,25 @@ func initCache(opts *DBConfs) error {
 			"PRIMARY KEY (`id`)," +
 			"UNIQUE INDEX `user_UNIQUE` (`user` ASC) VISIBLE," +
 			"UNIQUE INDEX `token_UNIQUE` (`token` ASC) VISIBLE," +
+			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
+
+		if tableErr != nil {
+			return tableErr
+		}
+	} else if err != nil {
+		return err
+	}
+
+	err = db.QueryRow("SHOW TABLES LIKE '" + attachmentsTable + "'").Scan(&queriedTableName)
+	if err == sql.ErrNoRows {
+		_, tableErr := db.Exec("CREATE TABLE `" + attachmentsTable + "` (" +
+			"`id` INT NOT NULL AUTO_INCREMENT," +
+			"`att_id` VARCHAR(256) NOT NULL," +
+			"`fname` VARCHAR(256) NOT NULL," +
+			"`content_type` VARCHAR(128) NOT NULL," +
+			"`last_updated` DATETIME NOT NULL," +
+			"PRIMARY KEY (`id`)," +
+			"UNIQUE INDEX `att_id_UNIQUE` (`att_id` ASC) VISIBLE," +
 			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
 
 		if tableErr != nil {
@@ -64,9 +84,9 @@ func initCache(opts *DBConfs) error {
 }
 
 func (cd *CachedData) storeToken(user string, token string) error {
-	_, err := cd.db.Exec("INSERT INTO "+tableName+"(user, token, last_updated) VALUES(?, ?, ?)", user, token, time.Now())
+	_, err := cd.db.Exec("INSERT INTO "+loggedUsersTable+"(user, token, last_updated) VALUES(?, ?, ?)", user, token, time.Now())
 	if err != nil {
-		_, err = cd.db.Exec("UPDATE "+tableName+" SET token = ?, last_updated = ? WHERE user = ?", token, time.Now(), user)
+		_, err = cd.db.Exec("UPDATE "+loggedUsersTable+" SET token = ?, last_updated = ? WHERE user = ?", token, time.Now(), user)
 		if err != nil {
 			return err
 		}
@@ -80,7 +100,7 @@ func (cd *CachedData) loadUserTokens() (map[string]string, error) {
 
 	tokens := make(map[string]string)
 
-	rows, err := cd.db.Query("SELECT user, token FROM " + tableName)
+	rows, err := cd.db.Query("SELECT user, token FROM " + loggedUsersTable)
 	if err != nil {
 		return nil, err
 	}
@@ -97,4 +117,24 @@ func (cd *CachedData) loadUserTokens() (map[string]string, error) {
 	}
 
 	return tokens, nil
+}
+
+func (cd *CachedData) attachmentExists(id string) []string {
+	var fname, contentType string
+
+	err := cd.db.QueryRow("SELECT fname, content_type FROM "+attachmentsTable+" WHERE att_id = ?", id).Scan(&fname, &contentType)
+	if err != nil {
+		return nil
+	}
+
+	return []string{fname, contentType}
+}
+
+func (cd *CachedData) saveAttachment(id string, name string, contentType string) error {
+	_, err := cd.db.Exec("INSERT INTO "+attachmentsTable+"(att_id, fname, content_type, last_updated) VALUES(?, ?, ?, ?)", id, name, contentType, time.Now())
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
