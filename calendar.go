@@ -167,7 +167,7 @@ func (c *Calendar) shouldSkip(data map[string]interface{}) bool {
 	return false
 }
 
-func (c *Calendar) handleAttachments(id string, hasAttachments bool) ([]*Attachment, error) {
+func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) ([]*Attachment, error) {
 	if !hasAttachments {
 		return nil, nil
 	}
@@ -195,7 +195,7 @@ func (c *Calendar) handleAttachments(id string, hasAttachments bool) ([]*Attachm
 
 		if attCache := cachedData.attachmentExists(attId); attCache != nil {
 			attachments = append(attachments, &Attachment{
-				url:      "/attachment/" + attId + "/" + attCache[0],
+				url:      "https://" + baseHost + "/attachment/" + attId + "/" + attCache[0],
 				mimeType: attCache[1],
 			})
 			continue
@@ -217,7 +217,7 @@ func (c *Calendar) handleAttachments(id string, hasAttachments bool) ([]*Attachm
 		}
 
 		attachments = append(attachments, &Attachment{
-			url:      "/attachment/" + attId + "/" + name,
+			url:      "https://" + baseHost + "/attachment/" + attId + "/" + name,
 			mimeType: contentType,
 		})
 	}
@@ -225,7 +225,7 @@ func (c *Calendar) handleAttachments(id string, hasAttachments bool) ([]*Attachm
 	return attachments, nil
 }
 
-func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
+func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string, error) {
 	var start, end time.Time
 	var calData map[string]interface{}
 
@@ -303,13 +303,16 @@ func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
 				event.SetDescription(description + "\n\n" + link)
 			}
 
-			atts, err := c.handleAttachments(data["id"].(string), data["hasAttachments"].(bool))
-			if err != nil {
-				return "", err
-			}
+			// Google only supports attachments that are hosted on Drive
+			if !google {
+				atts, err := c.handleAttachments(baseHost, data["id"].(string), data["hasAttachments"].(bool))
+				if err != nil {
+					return "", err
+				}
 
-			for _, v := range atts {
-				event.AddAttachmentURL(v.url, v.mimeType)
+				for _, v := range atts {
+					event.AddAttachmentURL(v.url, v.mimeType)
+				}
 			}
 
 			organizer := data["organizer"].(map[string]interface{})
@@ -319,6 +322,7 @@ func (c *Calendar) getCalendar(full bool, google bool) (string, error) {
 
 			event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
 
+			// Google can't handle big lists of invitees (>5 I guess), and don't display them either way
 			if !google {
 				attendees := data["attendees"].([]interface{})
 				for _, att := range attendees {

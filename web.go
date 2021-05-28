@@ -3,10 +3,12 @@ package main
 import (
 	"math/rand"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/viper"
 )
 
 const (
@@ -197,7 +199,8 @@ For Google Calendar:
 			return c.Redirect(http.StatusTemporaryRedirect, "/")
 		}
 
-		if body, err := cal.getCalendar(full, google); err == nil {
+		baseHost := c.Request().Host
+		if body, err := cal.getCalendar(baseHost, full, google); err == nil {
 			log.Info().
 				Str("src_ip", c.RealIP()).
 				Str("method", c.Request().Method).
@@ -221,6 +224,24 @@ For Google Calendar:
 			return c.String(http.StatusInternalServerError, err.Error())
 		}
 
+	})
+
+	e.GET("/attachment/:attId/:fname", func(c echo.Context) error {
+		start := time.Now()
+
+		attId, _ := url.QueryUnescape(c.Param("attId"))
+		fname, _ := url.QueryUnescape(c.Param("fname"))
+
+		baseDir := viper.GetString("attachments_dir") + "/" + attId
+
+		log.Info().
+			Str("src_ip", c.RealIP()).
+			Str("method", c.Request().Method).
+			Str("path", c.Path()).
+			Dur("duration", time.Since(start)).
+			Send()
+
+		return c.File(baseDir + "/" + fname)
 	})
 
 	e.Logger.Fatal(e.Start(":5000"))
