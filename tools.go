@@ -3,6 +3,7 @@ package main
 import (
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -58,4 +59,41 @@ func html2text(body string) (string, error) {
 	}
 
 	return "", nil
+}
+
+func getStartEndWeekDays() (time.Time, time.Time) {
+	var start, end time.Time
+
+	now := time.Now()
+	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+	switch t.Weekday() {
+	case time.Saturday:
+		start = t.Add(time.Hour * 24 * 2)
+	case time.Sunday:
+		start = t.Add(time.Hour * 24)
+	case time.Monday:
+		start = t
+	default:
+		start = t
+		for {
+			start = start.Add(time.Hour * 24 * -1)
+			if start.Weekday() == time.Monday {
+				break
+			}
+		}
+	}
+
+	end = start.Add(time.Hour * 24 * 5)
+
+	return start, end
+}
+
+func getMonthAfterStartEndWeekDays() (time.Time, time.Time) {
+	start, end := getStartEndWeekDays()
+
+	start = start.Add(time.Hour * 24 * 7)
+	end = start.Add(time.Hour * 24 * 7 * 3)
+
+	return start, end
 }

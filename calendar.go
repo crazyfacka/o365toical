@@ -29,6 +29,7 @@ type Calendar struct {
 	displayName string
 	userName    string
 	userMail    string
+	valid       bool
 	lastUpdated time.Time
 }
 
@@ -50,6 +51,7 @@ func newCalendarHandler() *Calendar {
 	return &Calendar{
 		ctx:         ctx,
 		conf:        conf,
+		valid:       false,
 		lastUpdated: time.Now(),
 	}
 }
@@ -147,6 +149,8 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 		}
 	}
 
+	c.valid = true
+
 	return cookieToken, nil
 }
 
@@ -225,31 +229,87 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 	return attachments, nil
 }
 
-func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string, error) {
-	var start, end time.Time
-	var calData map[string]interface{}
+func (c *Calendar) handleBasicEventData(cal *ics.Calendar, data map[string]interface{}) *ics.VEvent {
+	event := cal.AddEvent(data["id"].(string))
+	event.SetDtStampTime(time.Now())
 
-	now := time.Now()
-	t := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
+	event.SetCreatedTime(t)
 
-	switch t.Weekday() {
-	case time.Saturday:
-		start = t.Add(time.Hour * 24 * 2)
-	case time.Sunday:
-		start = t.Add(time.Hour * 24)
-	case time.Monday:
-		start = t
-	default:
-		start = t
-		for {
-			start = start.Add(time.Hour * 24 * -1)
-			if start.Weekday() == time.Monday {
-				break
-			}
-		}
+	t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
+	event.SetModifiedAt(t)
+
+	t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
+	event.SetStartAt(t)
+
+	t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
+	event.SetEndAt(t)
+
+	event.SetSummary(data["subject"].(string))
+	event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
+
+	link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
+	if link != "" {
+		event.SetURL(link)
 	}
 
-	end = start.Add(time.Hour * 24 * 5)
+	description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
+	if err == nil && description != "" {
+		event.SetDescription(description + "\n\n" + link)
+	}
+
+	return event
+}
+
+func (c *Calendar) handleAttendees(event *ics.VEvent, data map[string]interface{}, google bool) {
+	organizer := data["organizer"].(map[string]interface{})
+	organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
+	organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
+	event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
+
+	event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
+
+	// Google can't handle big lists of invitees (>5 I guess), and don't display them either way
+	if !google {
+		attendees := data["attendees"].([]interface{})
+		for _, att := range attendees {
+			var props []ics.PropertyParameter
+
+			castAtt := att.(map[string]interface{})
+
+			typ := castAtt["type"].(string)
+			resp := castAtt["status"].(map[string]interface{})["response"].(string)
+			name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+			email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
+
+			if typ == "required" {
+				props = append(props, ics.ParticipationRoleReqParticipant)
+			} else {
+				props = append(props, ics.ParticipationRoleOptParticipant)
+			}
+
+			switch resp {
+			case "accepted":
+				props = append(props, ics.ParticipationStatusAccepted)
+			case "tentative":
+				props = append(props, ics.ParticipationStatusTentative)
+			case "declined":
+				props = append(props, ics.ParticipationStatusDeclined)
+			default:
+				props = append(props, ics.ParticipationStatusNeedsAction)
+			}
+
+			props = append(props, ics.WithCN(name))
+			event.AddAttendee(email, props...)
+		}
+	}
+}
+
+func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string, error) {
+	var calData map[string]interface{}
+	var cacheRetrieved bool
+
+	start, end := getStartEndWeekDays()
 
 	url := "https://graph.microsoft.com/v1.0/me/calendarview?startdatetime=" + start.Format(RFC3339Short) + "&enddatetime=" + end.Format(RFC3339Short) + "&top=10&skip=0"
 	body, err := c.getRemoteData(url)
@@ -275,33 +335,7 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 				continue
 			}
 
-			event := cal.AddEvent(data["id"].(string))
-			event.SetDtStampTime(time.Now())
-
-			t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
-			event.SetCreatedTime(t)
-
-			t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
-			event.SetModifiedAt(t)
-
-			t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
-			event.SetStartAt(t)
-
-			t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
-			event.SetEndAt(t)
-
-			event.SetSummary(data["subject"].(string))
-			event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
-
-			link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
-			if link != "" {
-				event.SetURL(link)
-			}
-
-			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
-			if err == nil && description != "" {
-				event.SetDescription(description + "\n\n" + link)
-			}
+			event := c.handleBasicEventData(cal, data)
 
 			// Google only supports attachments that are hosted on Drive
 			if !google {
@@ -315,47 +349,7 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 				}
 			}
 
-			organizer := data["organizer"].(map[string]interface{})
-			organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
-			organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
-			event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
-
-			event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
-
-			// Google can't handle big lists of invitees (>5 I guess), and don't display them either way
-			if !google {
-				attendees := data["attendees"].([]interface{})
-				for _, att := range attendees {
-					var props []ics.PropertyParameter
-
-					castAtt := att.(map[string]interface{})
-
-					typ := castAtt["type"].(string)
-					resp := castAtt["status"].(map[string]interface{})["response"].(string)
-					name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
-					email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
-
-					if typ == "required" {
-						props = append(props, ics.ParticipationRoleReqParticipant)
-					} else {
-						props = append(props, ics.ParticipationRoleOptParticipant)
-					}
-
-					switch resp {
-					case "accepted":
-						props = append(props, ics.ParticipationStatusAccepted)
-					case "tentative":
-						props = append(props, ics.ParticipationStatusTentative)
-					case "declined":
-						props = append(props, ics.ParticipationStatusDeclined)
-					default:
-						props = append(props, ics.ParticipationStatusNeedsAction)
-					}
-
-					props = append(props, ics.WithCN(name))
-					event.AddAttendee(email, props...)
-				}
-			}
+			c.handleAttendees(event, data, google)
 		}
 
 		if nextPage, ok := calData["@odata.nextLink"].(string); ok {
@@ -368,6 +362,21 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 			if err := json.Unmarshal(body, &calData); err != nil {
 				return "", err
 			}
+		} else if !cacheRetrieved {
+			cacheRetrieved = true
+
+			startMonth, endMonth := getMonthAfterStartEndWeekDays()
+			userCache, err := cachedData.getUserCache(c.userName, startMonth, endMonth)
+			if err != nil {
+				log.Warn().
+					Err(err).
+					Str("user", c.userName).
+					Str("method", "getUserCache").
+					Send()
+				break
+			}
+
+			calData["value"] = userCache
 		} else {
 			break
 		}

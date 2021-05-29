@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 const (
 	loggedUsersTable = "logged_users"
 	attachmentsTable = "attachments"
+	monthCacheTable  = "month_cache"
 )
 
 var cachedData *CachedData
@@ -27,7 +29,7 @@ type CachedData struct {
 }
 
 func initCache(opts *DBConfs) error {
-	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s", opts.user, opts.password, opts.host, opts.schema))
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", opts.user, opts.password, opts.host, opts.schema))
 	if err != nil {
 		return err
 	}
@@ -67,6 +69,25 @@ func initCache(opts *DBConfs) error {
 			"`last_updated` DATETIME NOT NULL," +
 			"PRIMARY KEY (`id`)," +
 			"UNIQUE INDEX `att_id_UNIQUE` (`att_id` ASC) VISIBLE," +
+			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
+
+		if tableErr != nil {
+			return tableErr
+		}
+	} else if err != nil {
+		return err
+	}
+
+	err = db.QueryRow("SHOW TABLES LIKE '" + monthCacheTable + "'").Scan(&queriedTableName)
+	if err == sql.ErrNoRows {
+		_, tableErr := db.Exec("CREATE TABLE `" + monthCacheTable + "` (" +
+			"`id` INT NOT NULL AUTO_INCREMENT," +
+			"`user` VARCHAR(8) NOT NULL," +
+			"`start` DATETIME NOT NULL," +
+			"`end` DATETIME NOT NULL," +
+			"`contents` MEDIUMTEXT NOT NULL," +
+			"`last_updated` DATETIME NOT NULL," +
+			"PRIMARY KEY (`id`)," +
 			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
 
 		if tableErr != nil {
@@ -137,4 +158,49 @@ func (cd *CachedData) saveAttachment(id string, name string, contentType string)
 	}
 
 	return nil
+}
+
+func (cd *CachedData) getCacheForUserLastUpdate(user string, start time.Time, end time.Time) (time.Time, error) {
+	var lastUpdated sql.NullTime
+
+	err := cd.db.QueryRow("SELECT last_updated FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&lastUpdated)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	return lastUpdated.Time, nil
+}
+
+func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Time, cachedValues []interface{}) error {
+	jsonData, err := json.Marshal(cachedValues)
+	if err != nil {
+		return err
+	}
+
+	_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
+	if err != nil {
+		_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (cd *CachedData) getUserCache(user string, start time.Time, end time.Time) ([]interface{}, error) {
+	var cachedValues []interface{}
+	var cachedValuesText string
+
+	err := cd.db.QueryRow("SELECT contents FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&cachedValuesText)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(cachedValuesText), &cachedValues)
+	if err != nil {
+		return nil, err
+	}
+
+	return cachedValues, nil
 }
