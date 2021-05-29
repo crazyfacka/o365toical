@@ -229,6 +229,82 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 	return attachments, nil
 }
 
+func (c *Calendar) handleBasicEventData(cal *ics.Calendar, data map[string]interface{}) *ics.VEvent {
+	event := cal.AddEvent(data["id"].(string))
+	event.SetDtStampTime(time.Now())
+
+	t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
+	event.SetCreatedTime(t)
+
+	t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
+	event.SetModifiedAt(t)
+
+	t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
+	event.SetStartAt(t)
+
+	t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
+	event.SetEndAt(t)
+
+	event.SetSummary(data["subject"].(string))
+	event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
+
+	link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
+	if link != "" {
+		event.SetURL(link)
+	}
+
+	description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
+	if err == nil && description != "" {
+		event.SetDescription(description + "\n\n" + link)
+	}
+
+	return event
+}
+
+func (c *Calendar) handleAttendees(event *ics.VEvent, data map[string]interface{}, google bool) {
+	organizer := data["organizer"].(map[string]interface{})
+	organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
+	organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
+	event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
+
+	event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
+
+	// Google can't handle big lists of invitees (>5 I guess), and don't display them either way
+	if !google {
+		attendees := data["attendees"].([]interface{})
+		for _, att := range attendees {
+			var props []ics.PropertyParameter
+
+			castAtt := att.(map[string]interface{})
+
+			typ := castAtt["type"].(string)
+			resp := castAtt["status"].(map[string]interface{})["response"].(string)
+			name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
+			email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
+
+			if typ == "required" {
+				props = append(props, ics.ParticipationRoleReqParticipant)
+			} else {
+				props = append(props, ics.ParticipationRoleOptParticipant)
+			}
+
+			switch resp {
+			case "accepted":
+				props = append(props, ics.ParticipationStatusAccepted)
+			case "tentative":
+				props = append(props, ics.ParticipationStatusTentative)
+			case "declined":
+				props = append(props, ics.ParticipationStatusDeclined)
+			default:
+				props = append(props, ics.ParticipationStatusNeedsAction)
+			}
+
+			props = append(props, ics.WithCN(name))
+			event.AddAttendee(email, props...)
+		}
+	}
+}
+
 func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string, error) {
 	var calData map[string]interface{}
 
@@ -258,33 +334,7 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 				continue
 			}
 
-			event := cal.AddEvent(data["id"].(string))
-			event.SetDtStampTime(time.Now())
-
-			t, _ := time.Parse(time.RFC3339, data["createdDateTime"].(string))
-			event.SetCreatedTime(t)
-
-			t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
-			event.SetModifiedAt(t)
-
-			t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
-			event.SetStartAt(t)
-
-			t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
-			event.SetEndAt(t)
-
-			event.SetSummary(data["subject"].(string))
-			event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
-
-			link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
-			if link != "" {
-				event.SetURL(link)
-			}
-
-			description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
-			if err == nil && description != "" {
-				event.SetDescription(description + "\n\n" + link)
-			}
+			event := c.handleBasicEventData(cal, data)
 
 			// Google only supports attachments that are hosted on Drive
 			if !google {
@@ -298,47 +348,7 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 				}
 			}
 
-			organizer := data["organizer"].(map[string]interface{})
-			organizerMail := organizer["emailAddress"].(map[string]interface{})["address"].(string)
-			organizerName := organizer["emailAddress"].(map[string]interface{})["name"].(string)
-			event.SetOrganizer(organizerMail, ics.WithCN(organizerName))
-
-			event.AddAttendee(organizerMail, ics.ParticipationRoleChair, ics.ParticipationStatusAccepted, ics.WithCN(organizerName))
-
-			// Google can't handle big lists of invitees (>5 I guess), and don't display them either way
-			if !google {
-				attendees := data["attendees"].([]interface{})
-				for _, att := range attendees {
-					var props []ics.PropertyParameter
-
-					castAtt := att.(map[string]interface{})
-
-					typ := castAtt["type"].(string)
-					resp := castAtt["status"].(map[string]interface{})["response"].(string)
-					name := castAtt["emailAddress"].(map[string]interface{})["name"].(string)
-					email := castAtt["emailAddress"].(map[string]interface{})["address"].(string)
-
-					if typ == "required" {
-						props = append(props, ics.ParticipationRoleReqParticipant)
-					} else {
-						props = append(props, ics.ParticipationRoleOptParticipant)
-					}
-
-					switch resp {
-					case "accepted":
-						props = append(props, ics.ParticipationStatusAccepted)
-					case "tentative":
-						props = append(props, ics.ParticipationStatusTentative)
-					case "declined":
-						props = append(props, ics.ParticipationStatusDeclined)
-					default:
-						props = append(props, ics.ParticipationStatusNeedsAction)
-					}
-
-					props = append(props, ics.WithCN(name))
-					event.AddAttendee(email, props...)
-				}
-			}
+			c.handleAttendees(event, data, google)
 		}
 
 		if nextPage, ok := calData["@odata.nextLink"].(string); ok {
