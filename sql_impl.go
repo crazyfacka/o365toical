@@ -187,3 +187,20 @@ func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Ti
 
 	return nil
 }
+
+func (cd *CachedData) getUserCache(user string, start time.Time, end time.Time) ([]interface{}, error) {
+	var cachedValues []interface{}
+	var cachedValuesText string
+
+	err := cd.db.QueryRow("SELECT contents FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&cachedValuesText)
+	if err != nil {
+		return nil, err
+	}
+
+	err = json.Unmarshal([]byte(cachedValuesText), &cachedValues)
+	if err != nil {
+		return nil, err
+	}
+
+	return cachedValues, nil
+}
