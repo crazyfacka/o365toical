@@ -239,11 +239,16 @@ func (c *Calendar) handleBasicEventData(cal *ics.Calendar, data map[string]inter
 	t, _ = time.Parse(time.RFC3339, data["lastModifiedDateTime"].(string))
 	event.SetModifiedAt(t)
 
-	t, _ = time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
-	event.SetStartAt(t)
+	ts, _ := time.Parse(StartEndTimeParse, data["start"].(map[string]interface{})["dateTime"].(string))
+	te, _ := time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
 
-	t, _ = time.Parse(StartEndTimeParse, data["end"].(map[string]interface{})["dateTime"].(string))
-	event.SetEndAt(t)
+	if data["isAllDay"].(bool) {
+		event.SetAllDayStartAt(ts)
+		event.SetAllDayEndAt(te)
+	} else {
+		event.SetStartAt(ts)
+		event.SetEndAt(te)
+	}
 
 	event.SetSummary(data["subject"].(string))
 	event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
