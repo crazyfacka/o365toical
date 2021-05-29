@@ -307,6 +307,7 @@ func (c *Calendar) handleAttendees(event *ics.VEvent, data map[string]interface{
 
 func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string, error) {
 	var calData map[string]interface{}
+	var cacheRetrieved bool
 
 	start, end := getStartEndWeekDays()
 
@@ -361,6 +362,21 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 			if err := json.Unmarshal(body, &calData); err != nil {
 				return "", err
 			}
+		} else if !cacheRetrieved {
+			cacheRetrieved = true
+
+			startMonth, endMonth := getMonthAfterStartEndWeekDays()
+			userCache, err := cachedData.getUserCache(c.userName, startMonth, endMonth)
+			if err != nil {
+				log.Warn().
+					Err(err).
+					Str("user", c.userName).
+					Str("method", "getUserCache").
+					Send()
+				break
+			}
+
+			calData["value"] = userCache
 		} else {
 			break
 		}
