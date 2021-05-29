@@ -29,7 +29,7 @@ type CachedData struct {
 }
 
 func initCache(opts *DBConfs) error {
-	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s", opts.user, opts.password, opts.host, opts.schema))
+	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", opts.user, opts.password, opts.host, opts.schema))
 	if err != nil {
 		return err
 	}
@@ -161,14 +161,14 @@ func (cd *CachedData) saveAttachment(id string, name string, contentType string)
 }
 
 func (cd *CachedData) getCacheForUserLastUpdate(user string, start time.Time, end time.Time) (time.Time, error) {
-	var lastUpdated time.Time
+	var lastUpdated sql.NullTime
 
 	err := cd.db.QueryRow("SELECT last_updated FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&lastUpdated)
 	if err != nil {
 		return time.Now(), err
 	}
 
-	return lastUpdated, nil
+	return lastUpdated.Time, nil
 }
 
 func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Time, cachedValues []interface{}) error {

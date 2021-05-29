@@ -45,7 +45,7 @@ func getCalendarMonthForUser(c *Calendar, start time.Time, end time.Time) ([]int
 
 func refreshCache() {
 	for {
-		time.Sleep(1 * time.Second)
+		time.Sleep(60 * time.Second)
 		for _, v := range loggedUsers {
 			start, end := getMonthAfterStartEndWeekDays()
 
@@ -70,6 +70,11 @@ func refreshCache() {
 						Str("method", "saveCacheForUser").
 						Send()
 				}
+
+				log.Info().
+					Str("user", v.userName).
+					Str("method", "refreshCache").
+					Msg("Updated cached data for user")
 			}
 		}
 	}
