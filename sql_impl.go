@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -87,7 +88,6 @@ func initCache(opts *DBConfs) error {
 			"`contents` MEDIUMTEXT NOT NULL," +
 			"`last_updated` DATETIME NOT NULL," +
 			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `user_UNIQUE` (`user` ASC) VISIBLE," +
 			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
 
 		if tableErr != nil {
@@ -155,6 +155,34 @@ func (cd *CachedData) saveAttachment(id string, name string, contentType string)
 	_, err := cd.db.Exec("INSERT INTO "+attachmentsTable+"(att_id, fname, content_type, last_updated) VALUES(?, ?, ?, ?)", id, name, contentType, time.Now())
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (cd *CachedData) getCacheForUserLastUpdate(user string, start time.Time, end time.Time) (time.Time, error) {
+	var lastUpdated time.Time
+
+	err := cd.db.QueryRow("SELECT last_updated FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&lastUpdated)
+	if err != nil {
+		return time.Now(), err
+	}
+
+	return lastUpdated, nil
+}
+
+func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Time, cachedValues []interface{}) error {
+	jsonData, err := json.Marshal(cachedValues)
+	if err != nil {
+		return err
+	}
+
+	_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
+	if err != nil {
+		_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil

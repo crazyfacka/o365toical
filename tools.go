@@ -88,3 +88,12 @@ func getStartEndWeekDays() (time.Time, time.Time) {
 
 	return start, end
 }
+
+func getMonthAfterStartEndWeekDays() (time.Time, time.Time) {
+	start, end := getStartEndWeekDays()
+
+	start = start.Add(time.Hour * 24 * 8)
+	end = start.Add(time.Hour * 24 * 7 * 3)
+
+	return start, end
+}
