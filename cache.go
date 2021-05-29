@@ -47,6 +47,10 @@ func refreshCache() {
 	for {
 		time.Sleep(60 * time.Second)
 		for _, v := range loggedUsers {
+			if !v.valid {
+				continue
+			}
+
 			start, end := getMonthAfterStartEndWeekDays()
 
 			lastUpdated, err := cachedData.getCacheForUserLastUpdate(v.userName, start, end)

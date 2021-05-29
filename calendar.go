@@ -29,6 +29,7 @@ type Calendar struct {
 	displayName string
 	userName    string
 	userMail    string
+	valid       bool
 	lastUpdated time.Time
 }
 
@@ -50,6 +51,7 @@ func newCalendarHandler() *Calendar {
 	return &Calendar{
 		ctx:         ctx,
 		conf:        conf,
+		valid:       false,
 		lastUpdated: time.Now(),
 	}
 }
@@ -146,6 +148,8 @@ func (c *Calendar) handleToken(code string, cookieToken string) (string, error) 
 			break
 		}
 	}
+
+	c.valid = true
 
 	return cookieToken, nil
 }
