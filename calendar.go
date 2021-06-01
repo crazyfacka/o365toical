@@ -195,7 +195,13 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 
 		attId := data["id"].(string)
 		name := data["name"].(string)
-		contentType := data["contentType"].(string)
+
+		var contentType string
+		if val, ok := data["contentType"]; ok {
+			contentType = val.(string)
+		} else {
+			contentType = "application/octet-stream"
+		}
 
 		if attCache := cachedData.attachmentExists(attId); attCache != nil {
 			attachments = append(attachments, &Attachment{
