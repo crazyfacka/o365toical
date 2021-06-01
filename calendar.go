@@ -197,7 +197,7 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 		name := data["name"].(string)
 
 		var contentType string
-		if val, ok := data["contentType"]; ok {
+		if val, ok := data["contentType"]; ok && val != nil {
 			contentType = val.(string)
 		} else {
 			contentType = "application/octet-stream"
