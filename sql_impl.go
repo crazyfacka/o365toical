@@ -88,7 +88,8 @@ func initCache(opts *DBConfs) error {
 			"`contents` MEDIUMTEXT NOT NULL," +
 			"`last_updated` DATETIME NOT NULL," +
 			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
+			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE," +
+			"UNIQUE KEY `idx_month_cache_start_end_user` (`start`,`end`,`user`) VISIBLE);")
 
 		if tableErr != nil {
 			return tableErr
@@ -177,9 +178,9 @@ func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Ti
 		return err
 	}
 
-	_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
+	_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
 	if err != nil {
-		_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
+		_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
 		if err != nil {
 			return err
 		}
