@@ -177,9 +177,9 @@ func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Ti
 		return err
 	}
 
-	_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
+	_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
 	if err != nil {
-		_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
+		_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
 		if err != nil {
 			return err
 		}
