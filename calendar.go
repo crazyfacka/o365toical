@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -259,17 +260,45 @@ func (c *Calendar) handleBasicEventData(cal *ics.Calendar, data map[string]inter
 	event.SetSummary(data["subject"].(string))
 	event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
 
+	return event
+}
+
+func (c *Calendar) handleDescription(event *ics.VEvent, data map[string]interface{}, atts []*Attachment) {
 	link := strings.TrimSpace(parseTeamsLink(data["body"].(map[string]interface{})["content"].(string), data["onlineMeeting"]))
 	if link != "" {
 		event.SetURL(link)
 	}
 
-	description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
-	if err == nil && description != "" {
-		event.SetDescription(description + "\n\n" + link)
+	var attString strings.Builder
+	for i, v := range atts {
+		if i > 0 {
+			attString.WriteString("\n\n")
+		}
+
+		attString.WriteString("Attachment ")
+		attString.WriteString("(")
+		attString.WriteString(strconv.Itoa(i + 1))
+		attString.WriteString("): ")
+		attString.WriteString(v.url)
 	}
 
-	return event
+	description, err := html2text(data["body"].(map[string]interface{})["content"].(string))
+	if err == nil && description != "" {
+		var dscString strings.Builder
+		dscString.WriteString(description)
+
+		if attString.Len() > 0 {
+			dscString.WriteString("\n\n")
+			dscString.WriteString(attString.String())
+		}
+
+		if link != "" {
+			dscString.WriteString("\n\n")
+			dscString.WriteString(link)
+		}
+
+		event.SetDescription(dscString.String())
+	}
 }
 
 func (c *Calendar) handleAttendees(event *ics.VEvent, data map[string]interface{}, google bool) {
@@ -349,8 +378,9 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 			event := c.handleBasicEventData(cal, data)
 
 			// Google only supports attachments that are hosted on Drive
+			var atts []*Attachment
 			if !google {
-				atts, err := c.handleAttachments(baseHost, data["id"].(string), data["hasAttachments"].(bool))
+				atts, err = c.handleAttachments(baseHost, data["id"].(string), data["hasAttachments"].(bool))
 				if err != nil {
 					return "", err
 				}
@@ -360,6 +390,7 @@ func (c *Calendar) getCalendar(baseHost string, full bool, google bool) (string,
 				}
 			}
 
+			c.handleDescription(event, data, atts)
 			c.handleAttendees(event, data, google)
 		}
 
