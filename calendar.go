@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -180,8 +181,8 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 	var attData map[string]interface{}
 	var attachments []*Attachment
 
-	url := "https://graph.microsoft.com/v1.0/me/events/" + id + "/attachments"
-	body, err := c.getRemoteData(url)
+	baseUrl := "https://graph.microsoft.com/v1.0/me/events/" + id + "/attachments"
+	body, err := c.getRemoteData(baseUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -206,15 +207,15 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 
 		if attCache := cachedData.attachmentExists(attId); attCache != nil {
 			attachments = append(attachments, &Attachment{
-				url:      "https://" + baseHost + "/attachment/" + attId + "/" + attCache[0],
+				url:      "https://" + baseHost + "/attachment/" + attId + "/" + url.PathEscape(attCache[0]),
 				mimeType: attCache[1],
 			})
 			continue
 		}
 
 		go func() {
-			url := "https://graph.microsoft.com/v1.0/me/events/" + id + "/attachments/" + attId + "/$value"
-			if err := c.saveURLToFile(url, attId, name); err != nil {
+			baseUrl := "https://graph.microsoft.com/v1.0/me/events/" + id + "/attachments/" + attId + "/$value"
+			if err := c.saveURLToFile(baseUrl, attId, name); err != nil {
 				log.Error().
 					Err(err).
 					Str("Attachment ID", attId).
@@ -228,7 +229,7 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 		}
 
 		attachments = append(attachments, &Attachment{
-			url:      "https://" + baseHost + "/attachment/" + attId + "/" + name,
+			url:      "https://" + baseHost + "/attachment/" + attId + "/" + url.PathEscape(name),
 			mimeType: contentType,
 		})
 	}
