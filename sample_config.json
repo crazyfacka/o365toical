@@ -1,0 +1,13 @@
+{
+    "client_id": "",
+    "secret": "",
+    "tenant": "",
+    "redirect_url": "http://localhost:5000/token",
+    "attachments_dir": "/files",
+    "mysql": {
+        "user": "user",
+        "password": "pwd",
+        "host": "127.0.0.1:3306",
+        "schema": "o365cal"
+    }
+}
