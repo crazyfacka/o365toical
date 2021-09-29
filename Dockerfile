@@ -6,7 +6,7 @@ COPY *.go .
 RUN NOW=$(date +"%Y-%m-%d_%H%M") && \
 go build -ldflags "-X main.BuildDate=$NOW" -a -o app
 
-FROM debian:buster
+FROM debian:bullseye
 RUN apt update && apt install ca-certificates -y
 WORKDIR /app/
 COPY --from=builder /go/src/github.com/crazyfacka/o365toical/app .
