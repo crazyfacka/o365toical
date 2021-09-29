@@ -191,6 +191,10 @@ func (c *Calendar) handleAttachments(baseHost, id string, hasAttachments bool) (
 		return nil, err
 	}
 
+	if _, ok := attData["value"]; !ok {
+		return attachments, nil
+	}
+
 	values := attData["value"].([]interface{})
 	for _, v := range values {
 		data := v.(map[string]interface{})
