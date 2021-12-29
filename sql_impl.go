@@ -7,6 +7,7 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 )
 
 const (
@@ -28,8 +29,17 @@ type CachedData struct {
 	db *sql.DB
 }
 
-func initCache(opts *DBConfs) error {
-	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", opts.user, opts.password, opts.host, opts.schema))
+func initCache(opts *DBConfs, sqlDriver string) error {
+	var connStr string
+
+	switch sqlDriver {
+	case "mysql":
+		connStr = fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", opts.user, opts.password, opts.host, opts.schema)
+	case "postgres":
+		connStr = fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", opts.user, opts.password, opts.host, opts.schema)
+	}
+
+	db, err := sql.Open(sqlDriver, connStr)
 	if err != nil {
 		return err
 	}
@@ -39,62 +49,7 @@ func initCache(opts *DBConfs) error {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
 
-	var queriedTableName string
-	err = db.QueryRow("SHOW TABLES LIKE '" + loggedUsersTable + "'").Scan(&queriedTableName)
-	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + loggedUsersTable + "` (" +
-			"`id` INT NOT NULL AUTO_INCREMENT," +
-			"`user` VARCHAR(8) NOT NULL," +
-			"`token` VARCHAR(60) NOT NULL," +
-			"`last_updated` DATETIME NOT NULL," +
-			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `user_UNIQUE` (`user` ASC) VISIBLE," +
-			"UNIQUE INDEX `token_UNIQUE` (`token` ASC) VISIBLE," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
-
-		if tableErr != nil {
-			return tableErr
-		}
-	} else if err != nil {
-		return err
-	}
-
-	err = db.QueryRow("SHOW TABLES LIKE '" + attachmentsTable + "'").Scan(&queriedTableName)
-	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + attachmentsTable + "` (" +
-			"`id` INT NOT NULL AUTO_INCREMENT," +
-			"`att_id` VARCHAR(256) NOT NULL," +
-			"`fname` VARCHAR(256) NOT NULL," +
-			"`content_type` VARCHAR(128) NOT NULL," +
-			"`last_updated` DATETIME NOT NULL," +
-			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `att_id_UNIQUE` (`att_id` ASC) VISIBLE," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
-
-		if tableErr != nil {
-			return tableErr
-		}
-	} else if err != nil {
-		return err
-	}
-
-	err = db.QueryRow("SHOW TABLES LIKE '" + monthCacheTable + "'").Scan(&queriedTableName)
-	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + monthCacheTable + "` (" +
-			"`id` INT NOT NULL AUTO_INCREMENT," +
-			"`user` VARCHAR(8) NOT NULL," +
-			"`start` DATETIME NOT NULL," +
-			"`end` DATETIME NOT NULL," +
-			"`contents` MEDIUMTEXT NOT NULL," +
-			"`last_updated` DATETIME NOT NULL," +
-			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE," +
-			"UNIQUE KEY `idx_month_cache_start_end_user` (`start`,`end`,`user`) VISIBLE);")
-
-		if tableErr != nil {
-			return tableErr
-		}
-	} else if err != nil {
+	if err := validateTables(opts.schema, sqlDriver, db); err != nil {
 		return err
 	}
 

@@ -9,5 +9,11 @@
         "password": "pwd",
         "host": "127.0.0.1:3306",
         "schema": "o365cal"
+    },
+    "psql": {
+        "user": "user",
+        "password": "pwd",
+        "host": "127.0.0.1:5432",
+        "schema": "o365cal"
     }
 }

@@ -18,6 +18,11 @@ var BuildDate string
 func main() {
 	// TODO Add logout to clear user
 
+	var err error
+	var hasDBConn bool
+	var sqlConfs map[string]string
+	var sqlDriver string
+
 	fmt.Printf("O365 to iCal build from %s\n", BuildDate)
 
 	viper.SetConfigName("config")
@@ -30,17 +35,33 @@ func main() {
 	loggedUsers = make(map[string]*Calendar)
 	rand.Seed(time.Now().UnixNano())
 
-	mysqlConfs := viper.GetStringMapString("mysql")
+	if viper.IsSet("mysql") {
+		sqlDriver = "mysql"
+		sqlConfs = viper.GetStringMapString("mysql")
+		hasDBConn = true
+	}
 
-	err := initCache(&DBConfs{
-		user:     mysqlConfs["user"],
-		password: mysqlConfs["password"],
-		host:     mysqlConfs["host"],
-		schema:   mysqlConfs["schema"],
-	})
+	if viper.IsSet("psql") {
+		sqlDriver = "postgres"
+		sqlConfs = viper.GetStringMapString("psql")
+		hasDBConn = true
+	}
 
-	if err != nil {
-		log.Fatal().Err(err).Send()
+	if hasDBConn {
+		err = initCache(&DBConfs{
+			user:     sqlConfs["user"],
+			password: sqlConfs["password"],
+			host:     sqlConfs["host"],
+			schema:   sqlConfs["schema"],
+		}, sqlDriver)
+
+		if err != nil {
+			log.Fatal().Err(err).Send()
+			os.Exit(-1)
+		}
+	} else {
+		log.Fatal().
+			Msg("No database connection found in configuration file")
 		os.Exit(-1)
 	}
 
