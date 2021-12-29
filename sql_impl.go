@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/lib/pq"
 )
 
 const (
@@ -29,7 +29,7 @@ type CachedData struct {
 }
 
 func initCache(opts *DBConfs) error {
-	db, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", opts.user, opts.password, opts.host, opts.schema))
+	db, err := sql.Open("postgres", fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", opts.user, opts.password, opts.host, opts.schema))
 	if err != nil {
 		return err
 	}
@@ -39,62 +39,7 @@ func initCache(opts *DBConfs) error {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
 
-	var queriedTableName string
-	err = db.QueryRow("SHOW TABLES LIKE '" + loggedUsersTable + "'").Scan(&queriedTableName)
-	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + loggedUsersTable + "` (" +
-			"`id` INT NOT NULL AUTO_INCREMENT," +
-			"`user` VARCHAR(8) NOT NULL," +
-			"`token` VARCHAR(60) NOT NULL," +
-			"`last_updated` DATETIME NOT NULL," +
-			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `user_UNIQUE` (`user` ASC) VISIBLE," +
-			"UNIQUE INDEX `token_UNIQUE` (`token` ASC) VISIBLE," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
-
-		if tableErr != nil {
-			return tableErr
-		}
-	} else if err != nil {
-		return err
-	}
-
-	err = db.QueryRow("SHOW TABLES LIKE '" + attachmentsTable + "'").Scan(&queriedTableName)
-	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + attachmentsTable + "` (" +
-			"`id` INT NOT NULL AUTO_INCREMENT," +
-			"`att_id` VARCHAR(256) NOT NULL," +
-			"`fname` VARCHAR(256) NOT NULL," +
-			"`content_type` VARCHAR(128) NOT NULL," +
-			"`last_updated` DATETIME NOT NULL," +
-			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `att_id_UNIQUE` (`att_id` ASC) VISIBLE," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);")
-
-		if tableErr != nil {
-			return tableErr
-		}
-	} else if err != nil {
-		return err
-	}
-
-	err = db.QueryRow("SHOW TABLES LIKE '" + monthCacheTable + "'").Scan(&queriedTableName)
-	if err == sql.ErrNoRows {
-		_, tableErr := db.Exec("CREATE TABLE `" + monthCacheTable + "` (" +
-			"`id` INT NOT NULL AUTO_INCREMENT," +
-			"`user` VARCHAR(8) NOT NULL," +
-			"`start` DATETIME NOT NULL," +
-			"`end` DATETIME NOT NULL," +
-			"`contents` MEDIUMTEXT NOT NULL," +
-			"`last_updated` DATETIME NOT NULL," +
-			"PRIMARY KEY (`id`)," +
-			"UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE," +
-			"UNIQUE KEY `idx_month_cache_start_end_user` (`start`,`end`,`user`) VISIBLE);")
-
-		if tableErr != nil {
-			return tableErr
-		}
-	} else if err != nil {
+	if err := validateTables(opts.schema, db); err != nil {
 		return err
 	}
 
@@ -106,15 +51,10 @@ func initCache(opts *DBConfs) error {
 }
 
 func (cd *CachedData) storeToken(user string, token string) error {
-	_, err := cd.db.Exec("INSERT INTO "+loggedUsersTable+"(user, token, last_updated) VALUES(?, ?, ?)", user, token, time.Now())
-	if err != nil {
-		_, err = cd.db.Exec("UPDATE "+loggedUsersTable+" SET token = ?, last_updated = ? WHERE user = ?", token, time.Now(), user)
-		if err != nil {
-			return err
-		}
-	}
+	_, err := cd.db.Exec("INSERT INTO "+loggedUsersTable+"(\"user\", token, last_updated) VALUES($1, $2, $3) "+
+		"ON CONFLICT (\"user\") DO UPDATE SET token = EXCLUDED.token, last_updated = EXCLUDED.last_updated WHERE "+loggedUsersTable+".\"user\" = $1", user, token, time.Now())
 
-	return nil
+	return err
 }
 
 func (cd *CachedData) loadUserTokens() (map[string]string, error) {
@@ -122,7 +62,7 @@ func (cd *CachedData) loadUserTokens() (map[string]string, error) {
 
 	tokens := make(map[string]string)
 
-	rows, err := cd.db.Query("SELECT user, token FROM " + loggedUsersTable)
+	rows, err := cd.db.Query("SELECT \"user\", token FROM " + loggedUsersTable)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +84,7 @@ func (cd *CachedData) loadUserTokens() (map[string]string, error) {
 func (cd *CachedData) attachmentExists(id string) []string {
 	var fname, contentType string
 
-	err := cd.db.QueryRow("SELECT fname, content_type FROM "+attachmentsTable+" WHERE att_id = ?", id).Scan(&fname, &contentType)
+	err := cd.db.QueryRow("SELECT fname, content_type FROM "+attachmentsTable+" WHERE att_id = $1", id).Scan(&fname, &contentType)
 	if err != nil {
 		return nil
 	}
@@ -153,18 +93,14 @@ func (cd *CachedData) attachmentExists(id string) []string {
 }
 
 func (cd *CachedData) saveAttachment(id string, name string, contentType string) error {
-	_, err := cd.db.Exec("INSERT INTO "+attachmentsTable+"(att_id, fname, content_type, last_updated) VALUES(?, ?, ?, ?)", id, name, contentType, time.Now())
-	if err != nil {
-		return err
-	}
-
-	return nil
+	_, err := cd.db.Exec("INSERT INTO "+attachmentsTable+"(att_id, fname, content_type, last_updated) VALUES($1, $2, $3, $4)", id, name, contentType, time.Now())
+	return err
 }
 
 func (cd *CachedData) getCacheForUserLastUpdate(user string, start time.Time, end time.Time) (time.Time, error) {
 	var lastUpdated sql.NullTime
 
-	err := cd.db.QueryRow("SELECT last_updated FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&lastUpdated)
+	err := cd.db.QueryRow("SELECT last_updated FROM "+monthCacheTable+" WHERE \"user\" = $1 AND start = $2 AND \"end\" = $3", user, start, end).Scan(&lastUpdated)
 	if err != nil {
 		return time.Now(), err
 	}
@@ -178,22 +114,18 @@ func (cd *CachedData) saveCacheForUser(user string, start time.Time, end time.Ti
 		return err
 	}
 
-	_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(user, start, end, contents, last_updated) VALUES(?, ?, ?, ?, ?)", user, start, end, string(jsonData), time.Now())
-	if err != nil {
-		_, err = cd.db.Exec("UPDATE "+monthCacheTable+" SET contents = ?, last_updated = ? WHERE user = ? AND start = ? AND end = ?", string(jsonData), time.Now(), user, start, end)
-		if err != nil {
-			return err
-		}
-	}
+	_, err = cd.db.Exec("INSERT INTO "+monthCacheTable+"(\"user\", start, \"end\", contents, last_updated) VALUES($1, $2, $3, $4, $5) "+
+		"ON CONFLICT (start,\"end\",\"user\") DO UPDATE SET contents = EXCLUDED.contents, last_updated = EXCLUDED.last_updated "+
+		"WHERE "+monthCacheTable+".\"user\" = $1 AND "+monthCacheTable+".start = $2 AND "+monthCacheTable+".\"end\" = $3", user, start, end, string(jsonData), time.Now())
 
-	return nil
+	return err
 }
 
 func (cd *CachedData) getUserCache(user string, start time.Time, end time.Time) ([]interface{}, error) {
 	var cachedValues []interface{}
 	var cachedValuesText string
 
-	err := cd.db.QueryRow("SELECT contents FROM "+monthCacheTable+" WHERE user = ? AND start = ? AND end = ?", user, start, end).Scan(&cachedValuesText)
+	err := cd.db.QueryRow("SELECT contents FROM "+monthCacheTable+" WHERE \"user\" = $1 AND start = $2 AND \"end\" = $3", user, start, end).Scan(&cachedValuesText)
 	if err != nil {
 		return nil, err
 	}

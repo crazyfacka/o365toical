@@ -18,6 +18,9 @@ var BuildDate string
 func main() {
 	// TODO Add logout to clear user
 
+	var err error
+	var sqlConfs map[string]string
+
 	fmt.Printf("O365 to iCal build from %s\n", BuildDate)
 
 	viper.SetConfigName("config")
@@ -30,13 +33,13 @@ func main() {
 	loggedUsers = make(map[string]*Calendar)
 	rand.Seed(time.Now().UnixNano())
 
-	mysqlConfs := viper.GetStringMapString("mysql")
+	sqlConfs = viper.GetStringMapString("psql")
 
-	err := initCache(&DBConfs{
-		user:     mysqlConfs["user"],
-		password: mysqlConfs["password"],
-		host:     mysqlConfs["host"],
-		schema:   mysqlConfs["schema"],
+	err = initCache(&DBConfs{
+		user:     sqlConfs["user"],
+		password: sqlConfs["password"],
+		host:     sqlConfs["host"],
+		schema:   sqlConfs["schema"],
 	})
 
 	if err != nil {

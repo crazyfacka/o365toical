@@ -132,7 +132,19 @@ func web() {
 			return err
 		}
 
-		cachedData.storeToken(loggedUsers[cookie.Value].userName, cookie.Value)
+		err = cachedData.storeToken(loggedUsers[cookie.Value].userName, cookie.Value)
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("src_ip", c.RealIP()).
+				Str("method", c.Request().Method).
+				Str("path", c.Path()).
+				Dur("duration", time.Since(start)).
+				Int("status", http.StatusInternalServerError).
+				Send()
+
+			return err
+		}
 
 		log.Info().
 			Str("src_ip", c.RealIP()).
