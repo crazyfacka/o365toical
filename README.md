@@ -12,7 +12,7 @@ Uses the Microsoft Graph API to live grab the following calendar week and return
   * Don't forget to add a valid **Redirect URL**
 * Docker
 * A folder on where to store attachments
-* A MariaDB/MySQL installation (tested with MariaDB 10.5)
+* A PostgreSQL installation (tested with PostgreSQL 14.1)
 
 ## Build & configure
 
@@ -30,7 +30,7 @@ $ mv sample_config.json config.json
 **tenant:** Tenant retrieved from the Azure Portal<br/>
 **redirect_url:** The URL to where to redirect after successful authentication<br/>
 **attachments_dir:** Directory on where to store the attachments<br/>
-**mysql**<br/>
+**psql**<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;*user:* User with which to connect to the DB<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;*password:* Password corresponding to the user<br/>
 &nbsp;&nbsp;&nbsp;&nbsp;*host:* Host of the database<br/>
