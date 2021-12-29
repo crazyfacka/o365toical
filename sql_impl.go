@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/lib/pq"
 )
 
@@ -29,17 +28,8 @@ type CachedData struct {
 	db *sql.DB
 }
 
-func initCache(opts *DBConfs, sqlDriver string) error {
-	var connStr string
-
-	switch sqlDriver {
-	case "mysql":
-		connStr = fmt.Sprintf("%s:%s@tcp(%s)/%s?parseTime=true", opts.user, opts.password, opts.host, opts.schema)
-	case "postgres":
-		connStr = fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", opts.user, opts.password, opts.host, opts.schema)
-	}
-
-	db, err := sql.Open(sqlDriver, connStr)
+func initCache(opts *DBConfs) error {
+	db, err := sql.Open("postgres", fmt.Sprintf("postgres://%s:%s@%s/%s?sslmode=disable", opts.user, opts.password, opts.host, opts.schema))
 	if err != nil {
 		return err
 	}
@@ -49,7 +39,7 @@ func initCache(opts *DBConfs, sqlDriver string) error {
 	db.SetMaxOpenConns(10)
 	db.SetMaxIdleConns(10)
 
-	if err := validateTables(opts.schema, sqlDriver, db); err != nil {
+	if err := validateTables(opts.schema, db); err != nil {
 		return err
 	}
 

@@ -4,7 +4,6 @@ go 1.16
 
 require (
 	github.com/arran4/golang-ical v0.0.0-20210405013514-3a97d5d26366
-	github.com/go-sql-driver/mysql v1.6.0
 	github.com/labstack/echo/v4 v4.2.2
 	github.com/lib/pq v1.10.4
 	github.com/rs/zerolog v1.21.0
