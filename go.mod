@@ -3,7 +3,7 @@ module github.com/crazyfacka/o365toical
 go 1.16
 
 require (
-	github.com/arran4/golang-ical v0.0.0-20210405013514-3a97d5d26366
+	github.com/arran4/golang-ical v0.0.0-20220220103556-c519bf07e7e6
 	github.com/labstack/echo/v4 v4.2.2
 	github.com/lib/pq v1.10.4
 	github.com/rs/zerolog v1.21.0
