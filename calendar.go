@@ -265,6 +265,15 @@ func (c *Calendar) handleBasicEventData(cal *ics.Calendar, data map[string]inter
 	event.SetSummary(data["subject"].(string))
 	event.SetLocation(data["location"].(map[string]interface{})["displayName"].(string))
 
+	if rsp, ok := data["responseStatus"]; ok {
+		rspValue := rsp.(map[string]interface{})["response"].(string)
+		if rspValue != "accepted" && rspValue != "organizer" {
+			event.SetStatus(ics.ObjectStatusTentative)
+		}
+	} else {
+		event.SetStatus(ics.ObjectStatusTentative)
+	}
+
 	return event
 }
 
